@@ -1,0 +1,148 @@
+import type { Metadata } from "next";
+import { createClient } from "@/lib/supabase/server";
+import { PageTitle, Card, Status, Empty, DataTable } from "@/components/app/ui";
+import { formatDate } from "@/lib/utils";
+import { CountryChip } from "@/components/ui/flag";
+
+export const metadata: Metadata = { title: "Members" };
+
+type Member = {
+  id: string;
+  full_name: string;
+  username: string;
+  country_code: string;
+  status: string;
+  kyc_status: string;
+  commission_eligible: boolean;
+  referral_code: string;
+  created_at: string;
+  ranks: { name: string } | null;
+};
+
+export default async function MembersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string }>;
+}) {
+  const { q = "", status = "" } = await searchParams;
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("profiles")
+    .select(
+      "id, full_name, username, country_code, status, kyc_status, commission_eligible, referral_code, created_at, ranks(name)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (q) query = query.or(`full_name.ilike.%${q}%,username.ilike.%${q}%`);
+  if (status) query = query.eq("status", status as "active");
+
+  const { data: members } = await query;
+
+  return (
+    <>
+      <PageTitle
+        title="Members"
+        lead="Every account, newest first. Search by name or username."
+      />
+
+      <Card className="mb-6">
+        <form className="flex flex-wrap items-end gap-3">
+          <div className="min-w-48 flex-1">
+            <label
+              htmlFor="q"
+              className="block text-micro font-medium uppercase tracking-[0.08em] text-muted"
+            >
+              Search
+            </label>
+            <input
+              id="q"
+              name="q"
+              defaultValue={q}
+              placeholder="Name or username"
+              className="mt-2 h-11 w-full rounded-sm border border-line bg-surface px-3 text-small"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="status"
+              className="block text-micro font-medium uppercase tracking-[0.08em] text-muted"
+            >
+              Status
+            </label>
+            <select
+              id="status"
+              name="status"
+              defaultValue={status}
+              className="mt-2 h-11 rounded-sm border border-line bg-surface px-3 text-small"
+            >
+              <option value="">Any</option>
+              <option value="active">Active</option>
+              <option value="restricted">Restricted</option>
+              <option value="suspended">Suspended</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            className="h-11 rounded-sm border border-ink bg-ink px-5 text-small font-medium text-white"
+          >
+            Filter
+          </button>
+        </form>
+      </Card>
+
+      <DataTable<Member>
+        rows={(members ?? []) as unknown as Member[]}
+        keyOf={(m) => m.id}
+        empty={
+          <Empty
+            title="No members match"
+            body="Nothing is seeded here. The first real signup will appear once someone registers."
+          />
+        }
+        columns={[
+          {
+            key: "name",
+            header: "Member",
+            render: (m) => (
+              <span>
+                <span className="block font-medium">{m.full_name}</span>
+                <span className="block text-micro text-muted">@{m.username}</span>
+              </span>
+            ),
+          },
+          {
+                key: "country",
+                header: "Country",
+                render: (m) => <CountryChip code={m.country_code} size="sm" />,
+              },
+          { key: "rank", header: "Rank", render: (m) => m.ranks?.name ?? "Associate" },
+          {
+            key: "code",
+            header: "Referral code",
+            render: (m) => <span className="tabular">{m.referral_code}</span>,
+          },
+          {
+            key: "eligible",
+            header: "Commission",
+            render: (m) =>
+              m.commission_eligible ? (
+                <span className="text-positive">Eligible</span>
+              ) : (
+                <span className="text-muted">Paused</span>
+              ),
+          },
+          { key: "kyc", header: "KYC", render: (m) => m.kyc_status },
+          { key: "joined", header: "Joined", render: (m) => formatDate(m.created_at) },
+          {
+            key: "status",
+            header: "Status",
+            render: (m) => <Status status={m.status} />,
+          },
+        ]}
+      />
+    </>
+  );
+}

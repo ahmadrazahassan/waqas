@@ -1,0 +1,339 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   ASSIGNWORK DESIGN TOKENS
+   Section 3 of docs/ASSIGNWORK-BUILD-PROMPT.md
+
+   The default Tailwind colour and radius palettes are wiped with `initial`.
+   That is deliberate. It means `bg-blue-500` or `rounded-2xl` will not compile,
+   so the design system cannot drift by accident. If you need a value that is
+   not here, it belongs in this file after a design decision, not inline.
+   ========================================================================== */
+
+@theme {
+  /* ---- Colour ----------------------------------------------------------
+     Contrast rules, enforced by review not by CSS:
+       - lime is a FILL only. Text on lime is always --color-ink (~16:1).
+         #d4f717 on #f1f1f1 is ~1.2:1, so it is invisible as text.
+       - violet is the text accent: ~7.9:1 on white, ~6.9:1 on --color-bg.
+       - --color-muted is the floor for secondary text. Nothing lighter.
+  */
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-inherit: inherit;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-lime: #d4f717;
+  --color-lime-press: #c2e40e;
+  --color-violet: #5a38fd;
+  --color-violet-press: #4a2ce0;
+
+  --color-bg: #f1f1f1;
+  --color-surface: #ffffff;
+  --color-surface-alt: #e7e7e7;
+  --color-ink: #0d0d0d;
+  --color-ink-soft: #1a1a1a;
+  /* Must clear 4.5:1 on the DARKEST surface it sits on, which is
+     --color-surface-alt (#e7e7e7), not the page background. #6b6b6b only
+     managed 4.31:1 there. This is 5.2:1 on the cards and 5.6:1 on the page. */
+  --color-muted: #5f5f5f;
+  --color-line: #d9d9d9;
+  --color-line-dark: #2a2a2a;
+
+  --color-positive: #1f7a4d;
+  --color-warning: #8a6100;
+  --color-critical: #a8271f;
+  --color-info: #2f4fb5;
+
+  /* Commission depth series. Flat fills only, never a gradient. */
+  --color-depth-1: #5a38fd;
+  --color-depth-2: #8b74ff;
+  --color-depth-3: #c0b3ff;
+
+  /* ---- Type -------------------------------------------------------------
+     One family. Inter Tight. No second family for headings, code or labels.
+     The eyebrow "monospace" effect comes from uppercase plus tracking.
+  */
+  --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: 0.14em;
+  --text-eyebrow--font-weight: 500;
+
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1.4;
+  --text-micro--font-weight: 500;
+
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.55;
+
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-body--letter-spacing: -0.006em;
+
+  --text-lead: clamp(1.0625rem, 1.4vw, 1.25rem);
+  --text-lead--line-height: 1.5;
+  --text-lead--letter-spacing: -0.011em;
+
+  --text-h4: 1.125rem;
+  --text-h4--line-height: 1.35;
+  --text-h4--letter-spacing: -0.01em;
+  --text-h4--font-weight: 600;
+
+  --text-h3: clamp(1.375rem, 2.2vw, 1.75rem);
+  --text-h3--line-height: 1.2;
+  --text-h3--letter-spacing: -0.02em;
+  --text-h3--font-weight: 600;
+
+  --text-h2: clamp(2rem, 3.6vw, 2.75rem);
+  --text-h2--line-height: 1.08;
+  --text-h2--letter-spacing: -0.025em;
+  --text-h2--font-weight: 600;
+
+  --text-h1: clamp(2.5rem, 5vw, 3.5rem);
+  --text-h1--line-height: 1.02;
+  --text-h1--letter-spacing: -0.03em;
+  --text-h1--font-weight: 600;
+
+  --text-display: clamp(3rem, 7vw, 6rem);
+  --text-display--line-height: 0.94;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 600;
+
+  /* ---- Shape ------------------------------------------------------------
+     Maximum radius on any rectangular element is 6px.
+     No pill buttons. No pill header. No pill tabs. No pill inputs.
+     --radius-full exists ONLY for avatars, the card + control, and status dots.
+  */
+  --radius-*: initial;
+  --radius-none: 0px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-full: 999px;
+
+  /* ---- Elevation --------------------------------------------------------
+     There is essentially none. Separation is a tonal shift, a 1px border,
+     and whitespace. This shadow is for genuinely floating overlays only:
+     dropdown, popover, modal, toast.
+  */
+  --shadow-*: initial;
+  --shadow-overlay: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.08);
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --ease-entrance: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-state: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --container-site: 1440px;
+}
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.6;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis-weight: none;
+  }
+
+  /* Headings are sentence case. The only uppercase in the system is the
+     eyebrow label. Weight and tracking come from the text-* tokens. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Every interactive element gets a visible focus state. Violet, because
+     lime is invisible against a light background. */
+  :focus-visible {
+    outline: 2px solid var(--color-violet);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background-color: var(--color-lime);
+    color: var(--color-ink);
+  }
+
+  /* Every table, ledger, counter, stat and leaderboard row. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Next 16 removed the automatic smooth scroll. Opt back in explicitly. */
+  html[data-scroll-behavior="smooth"] {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ==========================================================================
+   UTILITIES
+   ========================================================================== */
+
+@utility container-site {
+  margin-inline: auto;
+  width: 100%;
+  max-width: var(--container-site);
+  /* Logical properties throughout, so the Urdu pages do not need a retrofit. */
+  padding-inline: --spacing(5);
+
+  @media (width >= 48rem) {
+    padding-inline: --spacing(8);
+  }
+
+  @media (width >= 64rem) {
+    padding-inline: --spacing(10);
+  }
+}
+
+/* Section rhythm: 72px mobile, 112px tablet, 160px desktop. */
+@utility section-y {
+  padding-block: --spacing(18);
+
+  @media (width >= 64rem) {
+    padding-block: --spacing(28);
+  }
+
+  @media (width >= 80rem) {
+    padding-block: --spacing(40);
+  }
+}
+
+/* A flat dark scrim over a photograph. Never a gradient. */
+@utility scrim {
+  position: absolute;
+  inset: 0;
+  background-color: rgb(13 13 13 / 0.55);
+}
+
+@utility hairline-b {
+  border-block-end: 1px solid var(--color-line);
+}
+
+@utility hairline-t {
+  border-block-start: 1px solid var(--color-line);
+}
+
+/* ==========================================================================
+   MARQUEE
+
+   Two identical tracks sit side by side and the pair translates -50%, so the
+   loop is seamless with no jump. The duplicate is aria-hidden, because a
+   screen reader should hear the announcements once, not twice.
+
+   Motion here is opt-out in three ways: hover pauses it, an explicit pause
+   button stops it, and prefers-reduced-motion removes the animation entirely.
+   WCAG 2.2.2 requires a pause mechanism for anything that auto-scrolls for
+   more than five seconds, and continuous horizontal motion is a real problem
+   for people with vestibular disorders.
+   ========================================================================== */
+
+@keyframes marquee-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@layer components {
+  .marquee {
+    overflow: hidden;
+    /* Never let a marquee widen the page. */
+    max-width: 100%;
+  }
+
+  .marquee-track {
+    display: flex;
+    width: max-content;
+    animation: marquee-scroll var(--marquee-duration, 40s) linear infinite;
+    will-change: transform;
+  }
+
+  .marquee:hover .marquee-track,
+  .marquee:focus-within .marquee-track,
+  .marquee[data-paused="true"] .marquee-track {
+    animation-play-state: paused;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
+  /* Without motion the second copy is dead weight, so hide it and let the
+     first track scroll by hand instead. */
+  .marquee {
+    overflow-x: auto;
+  }
+  .marquee-copy-duplicate {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   MOTION
+   Entrances 420ms, state changes 200ms. No parallax, no scroll jacking.
+   ========================================================================== */
+
+@layer components {
+  .reveal {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  .reveal[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 420ms var(--ease-entrance),
+      transform 420ms var(--ease-entrance);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .reveal,
+  .reveal[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+  }
+}
