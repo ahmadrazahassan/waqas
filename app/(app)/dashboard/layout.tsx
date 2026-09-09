@@ -14,7 +14,7 @@ export default async function DashboardLayout({
 
   const supabase = await createClient();
 
-  const [{ count: unread }, { count: activeTasks }, { data: roles }] = await Promise.all([
+  const [{ count: unread }, { count: activeTasks }, { data: roles }, { data: wallet }] = await Promise.all([
     supabase
       .from("notifications")
       .select("*", { count: "exact", head: true })
@@ -26,6 +26,12 @@ export default async function DashboardLayout({
       .eq("user_id", user.id)
       .in("status", ["active", "revision"]),
     supabase.from("user_roles").select("role").eq("user_id", user.id),
+    supabase
+      .from("wallet_entries")
+      .select("balance_after_minor")
+      .eq("user_id", user.id)
+      .order("id", { ascending: false })
+      .limit(1),
   ]);
 
   // Anyone from reviewer upwards can open /admin. Showing the link only to
@@ -55,6 +61,7 @@ export default async function DashboardLayout({
     <AppShell
       nav={nav}
       unread={unread ?? 0}
+      balance={wallet?.[0]?.balance_after_minor ?? 0}
       user={{
         name: user.profile.full_name,
         username: user.profile.username,

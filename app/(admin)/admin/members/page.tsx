@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageTitle, Card, Status, Empty, DataTable } from "@/components/app/ui";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatMoney } from "@/lib/utils";
 import { CountryChip } from "@/components/ui/flag";
 import { route } from "@/lib/routes";
 
@@ -19,6 +19,7 @@ type Member = {
   referral_code: string;
   created_at: string;
   ranks: { name: string } | null;
+  balance_minor: number;
 };
 
 export default async function MembersPage({
@@ -41,6 +42,22 @@ export default async function MembersPage({
   if (status) query = query.eq("status", status as "active");
 
   const { data: members } = await query;
+  const memberIds = (members ?? []).map((member) => member.id);
+  const { data: walletRows } = memberIds.length
+    ? await supabase
+        .from("wallet_entries")
+        .select("user_id, balance_after_minor")
+        .in("user_id", memberIds)
+        .order("id", { ascending: false })
+    : { data: [] as { user_id: string; balance_after_minor: number }[] };
+  const balanceByMember = new Map<string, number>();
+  for (const row of walletRows ?? []) {
+    if (!balanceByMember.has(row.user_id)) balanceByMember.set(row.user_id, row.balance_after_minor);
+  }
+  const memberRows = (members ?? []).map((member) => ({
+    ...member,
+    balance_minor: balanceByMember.get(member.id) ?? 0,
+  }));
 
   return (
     <>
@@ -50,9 +67,9 @@ export default async function MembersPage({
       />
 
       <div className="mb-6 grid gap-px sm:grid-cols-3">
-        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Showing</p><p className="mt-3 text-h3 tabular">{members?.length ?? 0}</p><p className="mt-1 text-small text-muted">members in this view</p></div>
-        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Active</p><p className="mt-3 text-h3 tabular">{(members ?? []).filter((m) => m.status === "active").length}</p><p className="mt-1 text-small text-muted">access currently open</p></div>
-        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Needs attention</p><p className="mt-3 text-h3 tabular">{(members ?? []).filter((m) => ["restricted", "suspended"].includes(m.status) || m.kyc_status === "pending").length}</p><p className="mt-1 text-small text-muted">restricted, suspended or KYC pending</p></div>
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Showing</p><p className="mt-3 text-h3 tabular">{memberRows.length}</p><p className="mt-1 text-small text-muted">members in this view</p></div>
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Active</p><p className="mt-3 text-h3 tabular">{memberRows.filter((m) => m.status === "active").length}</p><p className="mt-1 text-small text-muted">access currently open</p></div>
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Needs attention</p><p className="mt-3 text-h3 tabular">{memberRows.filter((m) => ["restricted", "suspended"].includes(m.status) || m.kyc_status === "pending").length}</p><p className="mt-1 text-small text-muted">restricted, suspended or KYC pending</p></div>
       </div>
 
       <Card className="mb-6">
@@ -102,7 +119,7 @@ export default async function MembersPage({
       </Card>
 
       <DataTable<Member>
-        rows={(members ?? []) as unknown as Member[]}
+        rows={memberRows as unknown as Member[]}
         keyOf={(m) => m.id}
         empty={
           <Empty
@@ -141,6 +158,12 @@ export default async function MembersPage({
               ) : (
                 <span className="text-muted">Paused</span>
               ),
+          },
+          {
+            key: "balance",
+            header: "Wallet",
+            align: "end",
+            render: (m) => <span className="tabular">{formatMoney(m.balance_minor)}</span>,
           },
           { key: "kyc", header: "KYC", render: (m) => <Status status={m.kyc_status} /> },
           { key: "joined", header: "Joined", render: (m) => formatDate(m.created_at) },

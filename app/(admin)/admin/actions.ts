@@ -427,6 +427,8 @@ export async function addMemberWalletAdjustment(_prev: AdminState, formData: For
   await admin.from("notifications").insert({ user_id: parsed.data.member_id, kind: "wallet_adjustment", title: parsed.data.direction === "credit" ? "A wallet credit was added" : "A wallet correction was applied", body: parsed.data.memo, href: "/dashboard/earnings" });
   revalidatePath(`/admin/members/${parsed.data.member_id}`);
   revalidatePath("/admin/members");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/earnings");
   return { ok: `Wallet ${parsed.data.direction} recorded as ${parsed.data.amount_pkr.toLocaleString()} PKR.` };
 }
 

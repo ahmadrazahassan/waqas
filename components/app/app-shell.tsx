@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { Wordmark } from "@/components/marketing/wordmark";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 import { route } from "@/lib/routes";
 
 export type NavItem = {
@@ -55,11 +55,13 @@ export function AppShell({
   nav,
   user,
   unread,
+  balance,
   children,
 }: {
   nav: NavItem[];
   user: { name: string; username: string; rank: string; avatarUrl: string | null };
   unread: number;
+  balance: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -145,6 +147,16 @@ export function AppShell({
           </span>
 
           <div className="ms-auto flex items-center gap-2">
+            <Link
+              href="/dashboard/earnings"
+              className="flex items-center gap-1 rounded-sm border border-line bg-surface px-2 py-1.5 transition-colors duration-200 hover:border-ink sm:gap-2 sm:px-3"
+            >
+              <Wallet size={16} strokeWidth={1.25} className="text-muted" />
+              <span>
+                <span className="hidden text-[10px] uppercase tracking-wider text-muted sm:block">Wallet</span>
+                <span className="block text-small font-medium tabular">{formatMoney(balance)}</span>
+              </span>
+            </Link>
             <Link
               href="/dashboard/notifications"
               className="relative grid size-11 place-items-center rounded-sm text-muted transition-colors duration-200 hover:text-ink"
