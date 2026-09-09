@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
@@ -13,6 +14,7 @@ import {
   Network,
   Receipt,
   Settings,
+  ShieldCheck,
   Trophy,
   Wallet,
 } from "lucide-react";
@@ -38,6 +40,7 @@ const ICONS = {
   leaderboard: Trophy,
   notifications: Bell,
   settings: Settings,
+  admin: ShieldCheck,
 } as const;
 
 /**
@@ -75,9 +78,12 @@ export function AppShell({
           <span className="hidden xl:block">
             <Wordmark />
           </span>
-          <span
-            aria-hidden="true"
-            className="block size-3 rounded-xs bg-lime xl:hidden"
+          <Image
+            src="/brand/assignwork-mark.png"
+            alt="Assignwork"
+            width={80}
+            height={80}
+            className="block size-8 object-contain xl:hidden"
           />
         </div>
 

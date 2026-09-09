@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Banknote,
@@ -50,7 +51,13 @@ export function AdminShell({
     <div className="flex min-h-dvh flex-col bg-bg lg:flex-row">
       <aside className="sticky top-0 z-40 flex shrink-0 flex-col border-e border-line-dark bg-ink text-white lg:h-dvh lg:w-64">
         <div className="flex h-16 items-center gap-2 border-b border-line-dark px-5">
-          <span aria-hidden="true" className="size-2.5 rounded-xs bg-lime" />
+          <Image
+            src="/brand/assignwork-mark.png"
+            alt=""
+            width={80}
+            height={80}
+            className="size-8 object-contain"
+          />
           <span className="text-small font-semibold">Assignwork admin</span>
         </div>
 

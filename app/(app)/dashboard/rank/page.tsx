@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { requirePaidAccess } from "@/lib/payment-access";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { PageTitle, Card, Progress } from "@/components/app/ui";
 import { AnnouncementBand } from "@/components/marketing/announcement-bar";
@@ -11,6 +12,7 @@ export const metadata: Metadata = { title: "Rank" };
 export default async function RankPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await requirePaidAccess(user);
 
   const supabase = await createClient();
 

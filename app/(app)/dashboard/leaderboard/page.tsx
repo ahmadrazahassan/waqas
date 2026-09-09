@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { requirePaidAccess } from "@/lib/payment-access";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { PageTitle, Card, StatTile, Empty, DataTable } from "@/components/app/ui";
 import { formatDate } from "@/lib/utils";
@@ -10,6 +11,7 @@ export const metadata: Metadata = { title: "Leaderboard" };
 export default async function BoardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await requirePaidAccess(user);
 
   const supabase = await createClient();
 

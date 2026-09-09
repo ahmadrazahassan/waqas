@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
+import { jazzCash, ownsPaymentProof } from "@/lib/billing";
 
 export type AdminState = { error?: string; ok?: string };
 
@@ -51,6 +52,13 @@ export async function reviewSubmission(
   }
 
   const supabase = await createClient();
+
+  const { data: reviewTarget } = await supabase.from("task_claims")
+    .select("id, status, tasks(currency)").eq("id", parsed.data.claim_id).maybeSingle();
+  if (!reviewTarget || !["submitted", "in_review"].includes(reviewTarget.status)) return { error: "This claim is not awaiting review." };
+  if (parsed.data.decision === "approve" && reviewTarget.tasks?.currency !== "PKR") return { error: "This task is not denominated in PKR. Set an approved PKR payout before any paid work is claimed; USD cents cannot be credited to a PKR wallet." };
+  const { data: targetSubmission } = await supabase.from("submissions").select("id").eq("id",parsed.data.submission_id).eq("claim_id",reviewTarget.id).maybeSingle();
+  if (!targetSubmission) return { error: "The submission does not belong to this claim." };
 
   const { error: reviewError } = await supabase.from("submission_reviews").insert({
     submission_id: parsed.data.submission_id,
@@ -337,7 +345,7 @@ export async function createTask(
   return { ok: parsed.data.publish ? "Published." : "Saved as a draft." };
 }
 
-/* ------------------------------------------------ confirm a bank transfer -- */
+/* ------------------------------------------------ verify a JazzCash payment */
 
 export async function decideDeclaration(
   _prev: AdminState,
@@ -354,7 +362,7 @@ export async function decideDeclaration(
   const decision = String(formData.get("decision") ?? "");
   const reason = String(formData.get("reject_reason") ?? "").trim();
 
-  if (!id || !["confirmed", "rejected"].includes(decision)) {
+  if (!z.string().uuid().safeParse(id).success || !["confirmed", "rejected"].includes(decision)) {
     return { error: "Unknown decision." };
   }
 
@@ -367,18 +375,19 @@ export async function decideDeclaration(
 
   const admin = createAdminClient();
 
+  if (user.profile.status !== "active") return { error: "Your staff account must be active to review payments." };
+  const { data: declaration, error: readError } = await admin.from("payment_declarations")
+    .select("*").eq("id", id).maybeSingle();
+  if (readError || !declaration) return { error: "Payment request could not be found." };
+  if (declaration.user_id === user.id) return { error: "Another finance reviewer must verify your payment." };
+  if (declaration.status !== "submitted") return { error: "This payment has already been reviewed. Refresh the queue." };
+
   if (decision === "rejected") {
-    if (reason.length < 5) {
+    if (reason.length < 5 || reason.length > 500) {
       return { error: "Say why, so the member can fix it." };
     }
 
-    const { data: dec } = await admin
-      .from("payment_declarations")
-      .select("user_id")
-      .eq("id", id)
-      .single();
-
-    await admin
+    const { data: updated, error: rejectError } = await admin
       .from("payment_declarations")
       .update({
         status: "rejected",
@@ -387,20 +396,20 @@ export async function decideDeclaration(
         reject_reason: reason,
       })
       .eq("id", id)
-      .eq("status", "submitted");
-
-    if (dec) {
-      await admin.from("notifications").insert({
-        user_id: dec.user_id,
-        kind: "payment_rejected",
-        title: "We could not match your transfer",
-        body: reason,
-        href: "/dashboard/billing",
-      });
-    }
+      .eq("status", "submitted").select("id").maybeSingle();
+    if (rejectError || !updated) return { error: "Could not reject this payment. Refresh the queue and try again." };
 
     revalidatePath("/admin/payments");
+    revalidatePath("/dashboard", "layout");
+    revalidatePath("/pricing");
     return { ok: "Rejected, and the member has been told why." };
+  }
+
+  if (formData.get("verified") !== "on") return { error: "Check the receipt against the JazzCash transaction history, then confirm the verification checkbox." };
+  if (declaration.method === jazzCash.id) {
+    if (!declaration.proof_path || !ownsPaymentProof(declaration.user_id, declaration.proof_path)) return { error: "A valid payment screenshot is required." };
+    const { error: proofError } = await admin.storage.from(jazzCash.proofBucket).info(declaration.proof_path);
+    if (proofError) return { error: "The screenshot is unavailable. Do not approve until it can be reviewed." };
   }
 
   // Confirming runs record_payment inside one transaction: it opens the
@@ -415,13 +424,9 @@ export async function decideDeclaration(
     return { error: `Could not confirm it: ${error.message}` };
   }
 
-  await admin.from("audit_log").insert({
-    actor_id: user.id,
-    action: "declaration.confirmed",
-    subject_table: "payment_declarations",
-    subject_id: id,
-  });
-
   revalidatePath("/admin/payments");
-  return { ok: "Confirmed. Subscription is live and commission is pending." };
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/pricing");
+  revalidatePath("/admin/members");
+  return { ok: "Payment verified. The account is active and plan access is unlocked." };
 }

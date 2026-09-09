@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import Image from "next/image";
+import { reviewDeadline } from "@/lib/billing";
 import { hasServiceRole } from "@/lib/supabase/admin";
 import { PageTitle, StatTile, Card, Status, Empty, DataTable } from "@/components/app/ui";
 import { DeclarationDecision } from "@/components/admin/declaration-decision";
@@ -9,19 +12,25 @@ import { CountryChip } from "@/components/ui/flag";
 export const metadata: Metadata = { title: "Payments" };
 
 export default async function AdminPaymentsPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (user.profile.status !== "active" || !user.roles.some(r => ["finance", "admin", "owner"].includes(r))) redirect("/admin");
   const supabase = await createClient();
 
-  const [{ data: declarations }, { data: payments }] = await Promise.all([
+  const [{ data: declarations, count: pendingCount, error: queueError }, { data: payments }, { data: reviewed }] = await Promise.all([
     supabase
       .from("payment_declarations")
-      .select("*, profiles(full_name, username, country_code), plans(name)")
-      .order("created_at", { ascending: false })
-      .limit(60),
+      .select("*, profiles(full_name, username, country_code), plans(name)", { count: "exact" })
+      .eq("status", "submitted")
+      .order("created_at", { ascending: true })
+      .limit(100),
     supabase
       .from("payments")
       .select("*, profiles(username), plans(name)")
       .order("paid_at", { ascending: false })
       .limit(40),
+    supabase.from("payment_declarations").select("id, reference, status, reject_reason, reviewed_at")
+      .in("status", ["confirmed", "rejected", "cancelled"]).order("created_at", { ascending: false }).limit(30),
   ]);
 
   const waiting = (declarations ?? []).filter((d) => d.status === "submitted");
@@ -34,7 +43,7 @@ export default async function AdminPaymentsPage() {
     <>
       <PageTitle
         title="Payments"
-        lead="Confirming a bank transfer opens the member's account for good, awards the one time 40% up the chain and awards leaderboard points, all in one transaction. Check it against the statement before you click."
+        lead="Match each receipt against the JazzCash transaction history before activating the account. Approval unlocks the plan and records the payment, commission and leaderboard points together. A screenshot alone is not proof of settled funds."
       />
 
       {!hasServiceRole() ? (
@@ -50,18 +59,20 @@ export default async function AdminPaymentsPage() {
       ) : null}
 
       <div className="grid gap-px sm:grid-cols-3">
-        <StatTile label="Awaiting confirmation" value={String(waiting.length)} />
-        <StatTile label="Value waiting" value={formatMoney(waitingValue)} tone="lime" />
+        <StatTile label="Awaiting confirmation" value={String(pendingCount ?? 0)} sub="Oldest requests shown first" />
+        <StatTile label="Value in this queue" value={formatMoney(waitingValue)} tone="lime" sub="Oldest 100 requests" />
         <StatTile label="Collected" value={formatMoney(collected)} tone="ink" sub="Last 40 payments" />
       </div>
 
       <div className="mt-8">
-        <h2 className="text-h4">Declared transfers</h2>
+        <h2 className="text-h4">Payment verification queue</h2>
+        {queueError ? <p role="alert" className="mt-3 text-small text-critical">The queue could not be loaded. Refresh before making a decision.</p> : null}
+        {(pendingCount ?? 0) > 100 ? <p className="mt-3 text-small text-muted">Showing the oldest 100 of {pendingCount} requests. The next requests appear as these are reviewed.</p> : null}
         <div className="mt-4 space-y-4">
           {waiting.length === 0 ? (
             <Empty
               title="Nothing waiting"
-              body="Members declare a bank transfer from their billing page and it lands here for matching."
+              body="Members submit a JazzCash payment screenshot from Plans & payments. New requests appear here for review."
             />
           ) : (
             waiting.map((d) => {
@@ -94,6 +105,14 @@ export default async function AdminPaymentsPage() {
                         Declared {formatDate(d.created_at)}
                         {d.proof_path ? " · screenshot attached" : " · no screenshot"}
                       </p>
+                      <p className={`mt-3 text-small font-medium ${reviewDeadline(d.created_at) <= new Date().getTime() ? "text-critical" : "text-muted"}`}>
+                        {reviewDeadline(d.created_at) <= new Date().getTime() ? "Review overdue · " : "Review due · "}
+                        {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(reviewDeadline(d.created_at))} PKT
+                      </p>
+                      {d.proof_path ? <a href={`/api/payments/${d.id}/proof`} target="_blank" rel="noopener noreferrer" className="mt-4 block w-fit max-w-full rounded-sm border border-line bg-bg p-3">
+                        <Image src={`/api/payments/${d.id}/proof`} alt={`Payment receipt for transaction ${d.reference}`} width={240} height={180} unoptimized className="h-44 w-60 max-w-full object-contain" />
+                        <span className="mt-2 block text-small underline underline-offset-4">Open full receipt</span>
+                      </a> : <p className="mt-3 text-small text-critical">No screenshot attached. Request a receipt before approval.</p>}
                       {d.note ? (
                         <p className="mt-2 max-w-[62ch] text-small text-muted">
                           <span className="font-medium text-ink">Their note: </span>
@@ -115,6 +134,17 @@ export default async function AdminPaymentsPage() {
         </div>
       </div>
 
+      <div className="mt-10">
+        <h2 className="text-h4">Recent decisions</h2>
+        <div className="mt-4"><DataTable rows={reviewed ?? []} keyOf={d => d.id}
+          empty={<Empty title="No decisions yet" body="Verified and rejected submissions will appear here." />}
+          columns={[
+            { key: "ref", header: "Reference", render: d => d.reference ?? "Not provided" },
+            { key: "status", header: "Decision", render: d => d.status },
+            { key: "reason", header: "Notes", render: d => d.reject_reason ?? "" },
+            { key: "date", header: "Reviewed", render: d => d.reviewed_at ? formatDate(d.reviewed_at) : "Not reviewed" },
+          ]} /></div>
+      </div>
       <div className="mt-10">
         <h2 className="text-h4">Confirmed payments</h2>
         <div className="mt-4">

@@ -8,6 +8,8 @@ import { memberAnnouncements } from "@/lib/announcements";
 import { PageTitle, StatTile, Card, Status, Empty, Progress } from "@/components/app/ui";
 import { ReferralLink } from "@/components/app/referral-link";
 import { TimeLeft } from "@/components/app/time-left";
+import { PaymentReview } from "@/components/app/payment-review";
+import { hasPaidAccess } from "@/lib/billing";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { site } from "@/lib/site";
 
@@ -33,6 +35,7 @@ export default async function DashboardPage() {
     { data: membership },
     { data: openTasks },
     { data: nextRank },
+    { data: waiting },
   ] = await Promise.all([
     supabase
       .from("wallet_entries")
@@ -71,7 +74,7 @@ export default async function DashboardPage() {
       .from("memberships")
       .select("*, plans(name, price_minor)")
       .eq("user_id", user.id)
-      .in("status", ["active", "trialing", "past_due"])
+      .eq("status", "active")
       .maybeSingle(),
     supabase
       .from("tasks")
@@ -86,24 +89,30 @@ export default async function DashboardPage() {
       .order("id", { ascending: true })
       .limit(1)
       .maybeSingle(),
+    supabase.from("payment_declarations").select("id, created_at, reference, plans(name)")
+      .eq("user_id", user.id).eq("status", "submitted").order("created_at").limit(1).maybeSingle(),
   ]);
 
   const balance = walletRows?.[0]?.balance_after_minor ?? 0;
   const pending = (pendingRows ?? []).reduce((sum, r) => sum + r.amount_minor, 0);
   const plan = (membership as { plans?: { name: string } } | null)?.plans;
+  const active = hasPaidAccess(user.profile.status, membership, new Date().getTime());
 
   return (
     <>
       <PageTitle
         title={`Assalam o alaikum, ${user.profile.full_name.split(" ")[0]}`}
         lead={
-          plan
+          active && plan
             ? `You are on ${plan.name}. Everything below is live from your account.`
-            : "You have not bought a plan yet, so the task pool and commission are locked."
+            : waiting ? "Your receipt is submitted. Track your payment review and account activation below."
+            : "Activate your plan to unlock paid tasks and the referral programme."
         }
       />
 
-      {!plan ? (
+      {waiting ? <PaymentReview key={waiting.id} submittedAt={waiting.created_at} serverNow={new Date().getTime()} reference={waiting.reference} planName={(waiting.plans as { name: string } | null)?.name} /> : null}
+      {active ? <div className="mb-6 rounded-md border border-line border-s-4 border-s-lime bg-surface p-5"><p className="text-h4">Your account is active</p><p className="mt-2 text-small text-muted">Payment verified. Your plan’s tasks and referral features are ready.</p></div> : null}
+      {!active && !waiting ? (
         <div className="mb-8 rounded-md border border-line border-s-2 border-s-warning bg-surface p-6">
           <p className="text-h4">Pick a plan to unlock the platform</p>
           <p className="mt-2 max-w-[62ch] text-small text-muted">
@@ -112,7 +121,7 @@ export default async function DashboardPage() {
             leaderboard. There is no monthly fee.
           </p>
           <Link
-            href="/pricing"
+            href="/dashboard/billing"
             className="mt-5 inline-flex h-11 items-center rounded-sm border border-ink bg-lime px-5 text-small font-medium text-ink transition-colors duration-200 hover:bg-lime-press"
           >
             See the plans
@@ -263,7 +272,7 @@ export default async function DashboardPage() {
         {/* Right */}
         <div className="space-y-6 xl:col-span-5">
           <Card>
-            <ReferralLink code={user.profile.referral_code} origin={origin} />
+            {active ? <ReferralLink code={user.profile.referral_code} origin={origin} /> : <><h2 className="text-h4">Referrals unlock after activation</h2><p className="mt-3 text-small text-muted">Once your payment is verified, your personal referral link will appear here.</p></>}
           </Card>
 
           <Card>

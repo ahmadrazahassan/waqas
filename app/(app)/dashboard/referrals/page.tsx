@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requirePaidAccess } from "@/lib/payment-access";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { PageTitle, StatTile, Card, Status, Empty, DataTable } from "@/components/app/ui";
 import { ReferralLink } from "@/components/app/referral-link";
@@ -25,6 +26,7 @@ type Commission = {
 export default async function ReferralsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await requirePaidAccess(user);
 
   const supabase = await createClient();
   const h = await headers();

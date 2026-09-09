@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import { footerNav, offices, site } from "@/lib/site";
 import { Wordmark } from "@/components/marketing/wordmark";
@@ -136,18 +137,26 @@ export function SiteFooter() {
         </div>
       </div>
 
-      {/* Zone 3: the oversized wordmark, clipped by the viewport edge */}
+      {/* Zone 3: a quiet brand watermark, clipped by the viewport edge */}
       <div
         aria-hidden="true"
-        className="container-site overflow-hidden pt-6"
+        className="container-site relative overflow-hidden pt-6"
         style={{ height: "clamp(88px, 15vw, 232px)" }}
       >
-        <span
-          className="block leading-[0.75] font-bold tracking-[-0.05em] text-ink select-none"
-          style={{ fontSize: "min(22vw, 320px)" }}
-        >
-          assignwork
-        </span>
+        <Image
+          src="/brand/assignwork-watermark.png"
+          alt=""
+          width={1280}
+          height={1280}
+          className="absolute -bottom-24 start-0 size-[min(34vw,270px)] object-contain opacity-[0.08]"
+        />
+        <Image
+          src="/brand/assignwork-logo.png"
+          alt=""
+          width={360}
+          height={120}
+          className="absolute bottom-0 end-0 h-[clamp(52px,9vw,120px)] w-auto object-contain opacity-90"
+        />
       </div>
     </footer>
   );

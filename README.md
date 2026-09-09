@@ -13,6 +13,16 @@ npm run dev
 ```
 
 Other scripts: `npm run build`, `npm run start`, `npm run lint`, `npm run typecheck`.
+Payment tests: `npm test` (Node 22.6+; verified with Node 24).
+
+## JazzCash payment setup
+
+Incoming payments now use only the supplied JazzCash QR, a required screenshot,
+a persistent six-hour review countdown and finance approval. Apply the included
+Supabase migration before enabling payment collection. The migration has not
+been applied to the live project from this workspace.
+
+See [setup, security and acceptance checks](docs/JAZZCASH-PAYMENTS.md).
 
 ## Where things are
 
@@ -57,8 +67,9 @@ browser, which the Supabase advisor will confirm.
 
     record_payment()      opens the subscription, awards the ONE TIME 40% up
                           the chain and the leaderboard points, in one
-                          transaction. Card webhook and admin-confirmed bank
-                          transfer both end up here.
+                          transaction. Manually verified JazzCash receipts
+                          reach it through confirm_declaration(). Automated
+                          payment webhooks are disabled.
     award_commissions()   level 1 is a flat 40%, paid only on a first payment.
                           Renewals return 0. Rank multiplies levels 2 and 3.
     clear_commissions()   hourly, pending -> available, writes the wallet entry

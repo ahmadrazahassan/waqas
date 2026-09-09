@@ -1,10 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-/**
- * The mark is a 2px ink rule over the name, echoing the hairline language used
- * everywhere else. No logo glyph, no icon, no gradient.
- */
 export function Wordmark({
   className,
   tone = "ink",
@@ -16,20 +13,35 @@ export function Wordmark({
     <Link
       href="/"
       className={cn(
-        "inline-flex items-baseline gap-2 text-h4 tracking-[-0.03em] transition-opacity duration-200 hover:opacity-70",
-        tone === "white" ? "text-white" : "text-ink",
+        "inline-flex items-center transition-opacity duration-200 hover:opacity-70",
         className,
       )}
       aria-label="Assignwork, home"
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "block h-2.5 w-2.5 rounded-xs",
-          tone === "white" ? "bg-lime" : "bg-lime",
-        )}
-      />
-      <span className="font-semibold">assignwork</span>
+      {tone === "white" ? (
+        <span className="inline-flex items-center gap-2">
+          <Image
+            src="/brand/assignwork-mark.png"
+            alt=""
+            width={96}
+            height={96}
+            priority
+            className="size-9 object-contain"
+          />
+          <span className="text-h4 font-semibold tracking-[-0.03em] text-white">
+            assignwork
+          </span>
+        </span>
+      ) : (
+        <Image
+          src="/brand/assignwork-logo.png"
+          alt="Assignwork"
+          width={360}
+          height={120}
+          priority
+          className="h-9 w-auto object-contain sm:h-10"
+        />
+      )}
     </Link>
   );
 }

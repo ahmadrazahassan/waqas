@@ -3,12 +3,17 @@ import { redirect } from "next/navigation";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { PageTitle, Card, Status, Empty, DataTable } from "@/components/app/ui";
 import { DeclareForm } from "@/components/app/declare-form";
-import { rails, bankDetails } from "@/lib/billing";
+import Image from "next/image";
+import Link from "next/link";
+import { jazzCash, hasPaidAccess } from "@/lib/billing";
+import { PaymentReview } from "@/components/app/payment-review";
+import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Billing" };
 
-export default async function BillingPage() {
+export default async function BillingPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
+  const { plan: selectedPlan } = await searchParams;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
@@ -21,7 +26,7 @@ export default async function BillingPage() {
         .from("memberships")
         .select("*, plans(name, price_minor)")
         .eq("user_id", user.id)
-        .in("status", ["active", "trialing", "past_due"])
+        .eq("status", "active")
         .maybeSingle(),
       supabase
         .from("payment_declarations")
@@ -37,103 +42,73 @@ export default async function BillingPage() {
         .limit(20),
     ]);
 
+  const bucket = hasServiceRole() ? await createAdminClient().storage.getBucket(jazzCash.proofBucket) : null;
+  const ready = !!bucket?.data && !bucket.data.public && !bucket.error && !!plans?.length;
+  const active = hasPaidAccess(user.profile.status, membership, new Date().getTime());
+  const canPay = ["pending", "active"].includes(user.profile.status) && !membership;
   const plan = (membership as { plans?: { name: string } } | null)?.plans;
   const waiting = (declarations ?? []).find((d) => d.status === "submitted");
 
   return (
     <>
       <PageTitle
-        title="Billing"
+        title="Plans & payments"
         lead={
-          plan
+          active && plan
             ? `You are on ${plan.name}. Paid once, and there is nothing further to pay.`
             : "One payment opens your account. There is no monthly fee and no renewal."
         }
       />
 
-      {!bankDetails.isReal ? (
-        <div className="mb-6 rounded-md border border-line border-s-2 border-s-warning bg-surface p-5">
-          <p className="text-h4">Bank details are not set yet</p>
-          <p className="mt-2 max-w-[70ch] text-small text-muted">
-            The account shown below is a placeholder. Nobody should transfer
-            money to it. Replace it in <code>lib/billing.ts</code> with the real
-            company account once that is open, and flip <code>isReal</code>.
-          </p>
-        </div>
-      ) : null}
-
-      {waiting ? (
-        <Card className="mb-6 border-s-2 border-s-info">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-h4">We are checking your transfer</p>
-              <p className="mt-2 max-w-[62ch] text-small text-muted">
-                You declared {formatMoney(waiting.amount_minor)} with reference{" "}
-                <span className="tabular">{waiting.reference}</span> on{" "}
-                {formatDate(waiting.created_at)}. Nothing switches on until we
-                have matched it against the bank, usually within one working day.
-              </p>
-            </div>
-            <Status status="requested" />
-          </div>
+      {active ? (
+        <Card className="mb-6 border-s-4 border-s-lime">
+          <p className="text-micro uppercase tracking-widest text-muted">Payment verified</p>
+          <h2 className="mt-2 text-h3">Your account is active.</h2>
+          <p className="mt-2 text-small text-muted">Your {plan?.name} access is ready. There is no monthly payment.</p>
+          <Link href="/dashboard/tasks" className="mt-4 inline-flex min-h-11 items-center rounded-sm bg-lime px-5 text-small font-medium">Explore your tasks</Link>
         </Card>
       ) : null}
 
-      {/* Rails */}
-      <div className="grid gap-px sm:grid-cols-2">
-        {rails.map((rail) => (
-          <Card
-            key={rail.id}
-            className={rail.available ? "" : "opacity-60"}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-h4">{rail.name}</h2>
-              <span className="text-micro uppercase tracking-[0.08em] text-muted">
-                {rail.available ? rail.clearing : "Not live"}
-              </span>
-            </div>
-            <p className="mt-3 text-small text-muted">{rail.body}</p>
-          </Card>
-        ))}
-      </div>
+      {waiting ? <PaymentReview key={waiting.id} submittedAt={waiting.created_at} serverNow={new Date().getTime()} reference={waiting.reference} planName={(waiting.plans as { name: string } | null)?.name} /> : null}
 
-      {!waiting ? (
-        <div className="mt-8 grid gap-6 xl:grid-cols-12">
-          <div className="xl:col-span-5">
-            <Card>
-              <h2 className="text-h4">Where to send it</h2>
-              <dl className="mt-4 border-t border-line">
-                {[
-                  ["Account name", bankDetails.accountName],
-                  ["Bank", bankDetails.bank],
-                  ["Account number", bankDetails.accountNumber],
-                  ["IBAN", bankDetails.iban],
-                ].map(([k, v]) => (
-                  <div
-                    key={k}
-                    className="flex items-baseline justify-between gap-4 border-b border-line py-3"
-                  >
-                    <dt className="text-small text-muted">{k}</dt>
-                    <dd className="text-small tabular">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="mt-4 text-micro text-muted">
-                Transfer from an account in your own name. A transfer from
-                someone else&apos;s account is one of the things our fraud
-                checks flag, and it will slow your confirmation down.
-              </p>
-            </Card>
-          </div>
-
-          <div className="xl:col-span-7">
-            <Card>
-              <h2 className="text-h4">Tell us you have paid</h2>
-              <DeclareForm plans={plans ?? []} />
-            </Card>
-          </div>
-        </div>
+      {!waiting && !active && declarations?.[0]?.status === "rejected" ? (
+        <Card className="mb-6 border-s-4 border-s-critical">
+          <h2 className="text-h4">Your payment needs attention</h2>
+          <p className="mt-2 text-small">{declarations[0].reject_reason ?? "Please check your receipt and transaction ID."}</p>
+          <p className="mt-2 text-small text-muted">If you already paid, correct your submission below. Do not send a second payment unless support confirms it is necessary.</p>
+        </Card>
       ) : null}
+
+      {!waiting && canPay ? (
+        ready ? <div className="grid gap-6 xl:grid-cols-12">
+          <Card className="xl:col-span-5">
+            <p className="text-micro uppercase tracking-widest text-muted">01 / Pay with JazzCash</p>
+            <h2 className="mt-3 text-h3">One QR. One payment.</h2>
+            <p className="mt-3 text-small text-muted">Choose your plan, scan this code in your payment app and confirm the recipient before sending.</p>
+            <a href={jazzCash.qrPath} target="_blank" rel="noopener noreferrer" className="mt-5 block rounded-sm border border-line bg-white p-3" aria-label="Open the original JazzCash QR at full size">
+              <Image src={jazzCash.qrPath} alt="JazzCash payment QR for Muhammad Waqas, account label 9104" width={727} height={1200} unoptimized className="mx-auto h-auto w-full max-w-[300px]" />
+            </a>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div><p className="text-small font-medium">{jazzCash.recipient}</p><p className="text-micro text-muted">Account label {jazzCash.accountLabel}</p></div>
+              <a href={jazzCash.qrPath} download="Assignwork-JazzCash-QR.png" className="inline-flex min-h-11 items-center rounded-sm border border-line px-4 text-small">Save QR</a>
+            </div>
+            <p className="mt-4 text-micro text-muted">On the same phone? Save the QR and use your payment app’s image scanner if supported. JazzCash QR is our only payment method.</p>
+          </Card>
+          <Card className="xl:col-span-7">
+            <p className="text-micro uppercase tracking-widest text-muted">02 / Submit your receipt</p>
+            <h2 className="mt-3 text-h3">Let us verify your payment.</h2>
+            <DeclareForm plans={plans ?? []} selectedPlan={selectedPlan} />
+          </Card>
+        </div> : <Card className="mb-6 border-s-4 border-s-warning">
+          <h2 className="text-h4">Payments are temporarily unavailable</h2>
+          <p className="mt-2 text-small text-muted">Secure receipt review is being configured. Please do not send a payment yet. Contact support if you have already paid.</p>
+          <Link href="/contact" className="mt-4 inline-block text-small underline">Contact support</Link>
+        </Card>
+      ) : !waiting && !active ? <Card>
+        <h2 className="text-h4">Contact support about your access</h2>
+        <p className="mt-2 text-small text-muted">Your account needs a manual check. Please do not pay again.</p>
+        <Link href="/contact" className="mt-4 inline-block text-small underline">Contact support</Link>
+      </Card> : null}
 
       {/* History */}
       <div className="mt-10">

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/page-header";
 import { Section, SectionHeader, Badge } from "@/components/ui/primitives";
-import { Callout, EmptyState } from "@/components/ui/states";
+import { Callout } from "@/components/ui/states";
+import { TaskLibrary } from "@/components/marketing/task-library";
 
 export const metadata: Metadata = {
   title: "Tasks",
@@ -50,14 +51,8 @@ export default function TasksPage() {
       </PageHeader>
 
       <Section>
-        <SectionHeader eyebrow="Open now" heading="What is available" />
-        <div className="mt-12">
-          <EmptyState
-            heading="The task pool opens at launch"
-            body="Once tasks are live this page lists every open one with its payment, deadline, category and minimum rank, filterable by all four. We are not going to fill it with example tasks that nobody can claim."
-            action={{ label: "See how claiming works", href: "/how-it-works" }}
-          />
-        </div>
+        <SectionHeader eyebrow="Task library" heading="Know the work before you start" lead="Explore 19 complete briefs: original practice assignments, content writing and authorised ad feedback. These previews are awaiting publication. Claimable work and final PKR rewards appear in your dashboard." />
+        <TaskLibrary />
       </Section>
 
       <Section className="border-t border-line">

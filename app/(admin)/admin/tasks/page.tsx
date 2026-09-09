@@ -77,7 +77,7 @@ export default async function AdminTasksPage() {
                   key: "payout",
                   header: "Pays",
                   align: "end",
-                  render: (t) => formatMoney(t.payout_minor),
+                  render: (t) => <span>{formatMoney(t.payout_minor, t.currency === "USD" ? "USD" : "PKR")}{t.currency !== "PKR" && <span className="block text-micro text-muted">Confirm PKR payout before publishing</span>}</span>,
                 },
               ]}
             />

@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: { serverActions: { bodySizeLimit: "6mb" } },
 
   // Next 16 defaults: qualities is [75], minimumCacheTTL is 4h, redirects cap at 3.
   // Local images with query strings need localPatterns. Use remotePatterns, never

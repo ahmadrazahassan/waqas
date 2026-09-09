@@ -32,6 +32,7 @@ const COLORS = [
   "lime",
   "lime-press",
   "violet",
+  "violet-soft",
   "violet-press",
   "bg",
   "surface",

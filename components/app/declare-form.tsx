@@ -3,7 +3,6 @@
 import { useActionState, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { declarePayment, type BillingState } from "@/app/(app)/dashboard/billing/actions";
-import { FileUpload } from "@/components/app/file-upload";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -16,13 +15,12 @@ type Plan = {
   summary: string;
 };
 
-export function DeclareForm({ plans }: { plans: Plan[] }) {
+export function DeclareForm({ plans, selectedPlan }: { plans: Plan[]; selectedPlan?: string }) {
   const [state, action, pending] = useActionState<BillingState, FormData>(
     declarePayment,
     {},
   );
-  const [planId, setPlanId] = useState<number>(plans[1]?.id ?? plans[0]?.id ?? 0);
-  const [proofPath, setProofPath] = useState<string>("");
+  const [planId, setPlanId] = useState<number>(plans.find(p => p.code === selectedPlan)?.id ?? plans[0]?.id ?? 0);
 
   const plan = plans.find((p) => p.id === planId);
   const amount = plan?.price_minor;
@@ -38,7 +36,6 @@ export function DeclareForm({ plans }: { plans: Plan[] }) {
   return (
     <form action={action} className="mt-5 space-y-5">
       <input type="hidden" name="plan_id" value={planId} />
-      <input type="hidden" name="proof_path" value={proofPath} />
 
       <div>
         <p className="text-micro font-medium uppercase tracking-[0.08em] text-muted">
@@ -75,7 +72,7 @@ export function DeclareForm({ plans }: { plans: Plan[] }) {
       {amount ? (
         <div className="rounded-sm border border-line bg-bg p-4">
           <p className="text-micro uppercase tracking-[0.08em] text-muted">
-            Transfer exactly
+            Pay exactly in PKR
           </p>
           <p className="mt-1 text-h2 tabular">{formatMoney(amount)}</p>
           <p className="mt-1 text-micro text-muted">
@@ -90,23 +87,24 @@ export function DeclareForm({ plans }: { plans: Plan[] }) {
           htmlFor="reference"
           className="block text-micro font-medium uppercase tracking-[0.08em] text-muted"
         >
-          Transaction reference
+          JazzCash transaction ID
         </label>
         <input
           id="reference"
           name="reference"
           required
-          placeholder="The reference your bank or wallet app gave you"
+          minLength={4}
+          maxLength={80}
+          placeholder="Transaction ID from your JazzCash receipt"
           className="mt-2 h-12 w-full rounded-sm border border-line bg-surface px-3.5 text-small"
         />
       </div>
 
-      <FileUpload
-        bucket="submissions"
-        label="Screenshot of the transfer (optional)"
-        hint="A screenshot speeds confirmation up a lot. PDF or image, up to 25MB."
-        onUploaded={setProofPath}
-      />
+      <div className="rounded-sm border border-dashed border-line bg-bg p-5">
+        <label htmlFor="payment-proof" className="block text-small font-medium">Payment screenshot <span className="text-muted">(required)</span></label>
+        <p id="proof-hint" className="mt-2 text-micro text-muted">Show the transaction ID, amount, recipient and successful payment status. PNG, JPG or WebP, up to 5 MB. Only you and authorised finance staff can view it.</p>
+        <input id="payment-proof" name="proof" type="file" required accept="image/png,image/jpeg,image/webp" aria-describedby="proof-hint" className="mt-4 block w-full min-w-0 text-small file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-line file:bg-surface file:px-4 file:py-3 file:text-small" />
+      </div>
 
       <div>
         <label
@@ -119,18 +117,23 @@ export function DeclareForm({ plans }: { plans: Plan[] }) {
           id="note"
           name="note"
           rows={2}
+          maxLength={500}
           className="mt-2 w-full rounded-sm border border-line bg-surface p-3 text-small"
         />
       </div>
 
-      <Button type="submit" size="lg" disabled={pending} arrow={!pending}>
+      <label className="flex items-start gap-3 text-small text-muted">
+        <input type="checkbox" name="acknowledged" required className="mt-1 size-4 shrink-0 accent-ink" />
+        <span>I have paid the selected amount to Muhammad Waqas using the JazzCash QR above. This receipt belongs to my payment. I understand activation requires admin verification.</span>
+      </label>
+      <Button type="submit" size="lg" disabled={pending || !plan} arrow={!pending}>
         {pending ? (
           <>
             <LoaderCircle size={16} strokeWidth={1.5} className="animate-spin" />
-            Recording
+            Submitting screenshot
           </>
         ) : (
-          "I have sent the transfer"
+          "Submit payment for review"
         )}
       </Button>
 
@@ -141,10 +144,8 @@ export function DeclareForm({ plans }: { plans: Plan[] }) {
       ) : null}
 
       <p className="text-micro text-muted">
-        Declaring a transfer does not switch your plan on by itself. We match it
-        against the bank first. That is deliberate: a self declaration that
-        activated an account would let anyone open one for free and pay their
-        own upline commission on it.
+        The six hour review countdown starts after your screenshot is successfully submitted.
+        Your account activates only after payment is verified. Please submit once and keep your original receipt.
       </p>
     </form>
   );

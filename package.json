@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/billing.test.ts tests/task-brief.test.ts tests/payment-migration.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.6",
@@ -26,6 +27,7 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",

@@ -8,6 +8,8 @@ import { PlanComparison } from "@/components/marketing/plan-comparison";
 import { Faq } from "@/components/marketing/faq";
 import { LevelRewardBanner } from "@/components/marketing/level-reward-banner";
 import { AnnouncementBand } from "@/components/marketing/announcement-bar";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { PaymentReview } from "@/components/app/payment-review";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -46,7 +48,7 @@ const pricingFaqs = [
   },
   {
     q: "Can I upgrade later?",
-    a: "Yes, and you only pay the difference. An upgrade improves your access immediately. It does not pay commission a second time to whoever referred you, because commission is paid once per member and not once per payment.",
+    a: "Contact support for an upgrade quote before making another payment. An approved upgrade changes your plan access. It does not pay commission a second time to whoever referred you, because commission is paid once per member and not once per payment.",
   },
   {
     q: "Can I get a refund?",
@@ -54,7 +56,7 @@ const pricingFaqs = [
   },
   {
     q: "How do I pay from Pakistan?",
-    a: "Bank transfer today. You transfer the amount, tell us the reference, and we match it against the account and open your access, usually within one working day. A card option is in progress and we will say so on this page when it is live.",
+    a: "JazzCash QR is our only payment method. Choose your plan, scan the QR in Plans & payments, then submit the transaction ID and a payment screenshot. A six hour review countdown starts once your submission is saved. Your account activates only after an admin verifies the payment. If review takes longer, please contact support rather than paying again.",
   },
   {
     q: "What about tax?",
@@ -62,7 +64,12 @@ const pricingFaqs = [
   },
 ] as const;
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const user = await getCurrentUser();
+  const supabase = await createClient();
+  const { data: waiting } = user ? await supabase.from("payment_declarations")
+    .select("id, created_at, reference, plans(name)").eq("user_id", user.id)
+    .eq("status", "submitted").order("created_at").limit(1).maybeSingle() : { data: null };
   return (
     <>
       <PageHeader
@@ -72,6 +79,7 @@ export default function PricingPage() {
       />
 
       <Section>
+        {waiting ? <PaymentReview key={waiting.id} submittedAt={waiting.created_at} serverNow={new Date().getTime()} reference={waiting.reference} planName={(waiting.plans as { name: string } | null)?.name} /> : null}
         <PricingTable />
       </Section>
 

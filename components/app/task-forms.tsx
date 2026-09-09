@@ -6,6 +6,7 @@ import { useState } from "react";
 import { claimTask, submitWork, type ActionState } from "@/app/(app)/dashboard/actions";
 import { FileUpload } from "@/components/app/file-upload";
 import { Button } from "@/components/ui/button";
+import { wordCount, type TaskBrief } from "@/lib/task-brief";
 
 /**
  * A disabled control always says why it is disabled. Greying something out
@@ -58,9 +59,10 @@ export function ClaimButton({
   );
 }
 
-export function SubmitWorkForm({ claimId }: { claimId: string }) {
+export function SubmitWorkForm({ claimId, guide }: { claimId: string; guide?: TaskBrief | null }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(submitWork, {});
   const [paths, setPaths] = useState<string[]>([]);
+  const [body, setBody] = useState("");
 
   return (
     <form action={action}>
@@ -80,9 +82,17 @@ export function SubmitWorkForm({ claimId }: { claimId: string }) {
         name="body"
         rows={8}
         required
+        value={body}
+        onChange={e => setBody(e.target.value)}
+        maxLength={40000}
         className="mt-2 w-full rounded-sm border border-line bg-surface p-3 text-small"
         placeholder="Paste your work here."
       />
+      <p className="mt-2 text-micro text-muted">{wordCount(body)} words{guide ? ` · Required: ${guide.minWords} to ${guide.maxWords} words` : ""}</p>
+      <label htmlFor={`sources-${claimId}`} className="mt-5 block text-small font-medium">Source links {guide?.sourceCount ? `(at least ${guide.sourceCount})` : "(if used)"}</label>
+      <textarea id={`sources-${claimId}`} name="sources" rows={2} maxLength={5000} placeholder="One https:// link per line. Use the supplied brief if no outside research is needed." className="mt-2 w-full rounded-control border border-line bg-surface p-3 text-small" />
+      <label htmlFor={`ai-${claimId}`} className="mt-5 block text-small font-medium">AI assistance</label>
+      <input id={`ai-${claimId}`} name="ai_use" required maxLength={500} placeholder="Tool used and how you checked it, or None" className="mt-2 h-12 w-full rounded-control border border-line bg-surface px-3 text-small" />
 
       <label
         htmlFor={`notes-${claimId}`}
@@ -101,16 +111,17 @@ export function SubmitWorkForm({ claimId }: { claimId: string }) {
       <div className="mt-4">
         <FileUpload
           bucket="submissions"
-          label="Attach files (optional)"
+          label={guide?.proofRequired ? "Attach proof (required)" : "Supporting files (optional)"}
           hint="Documents, spreadsheets, audio or images, up to 25MB each. Files go straight to private storage that only you and a reviewer can open."
           multiple
-          onUploaded={(path) =>
-            setPaths((prev) => (path ? [...prev, path] : []))
-          }
+          accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.png,.jpg,.jpeg,.webp"
+          onUploaded={() => {}}
+          onPathsChanged={setPaths}
         />
       </div>
 
-      <div className="mt-4 flex items-center gap-4">
+      <label className="mt-5 flex items-start gap-3 text-small text-muted"><input type="checkbox" name="confirmed" required className="mt-1 size-4 shrink-0 accent-ink"/><span>This is my work. I have checked the brief, included the requested proof and disclosed any sources or AI assistance.</span></label>
+      <div className="mt-4 flex flex-wrap items-center gap-4">
         <Button type="submit" disabled={pending} arrow={!pending}>
           {pending ? (
             <>

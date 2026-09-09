@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { updateTag } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { memberHasAccess } from "@/lib/payment-access";
+import { redirect } from "next/navigation";
+import { parseTaskBrief, validateTaskWork } from "@/lib/task-brief";
 
 export type ActionState = { error?: string; ok?: string };
 
@@ -18,6 +21,7 @@ export async function claimTask(
 
   const user = await getCurrentUser();
   if (!user) return { error: "You need to be logged in." };
+  if (!(await memberHasAccess(user))) return { error: "Your payment must be verified before you can claim tasks. Visit Plans & payments to check activation." };
 
   const supabase = await createClient();
 
@@ -25,7 +29,7 @@ export async function claimTask(
   // this member, the row simply is not there and there is nothing to claim.
   const { data: task } = await supabase
     .from("tasks")
-    .select("id, due_hours, status, max_claims, claims_used, min_rank_id")
+    .select("id, due_hours, status, max_claims, claims_used, min_rank_id, currency")
     .eq("id", taskId)
     .maybeSingle();
 
@@ -35,6 +39,10 @@ export async function claimTask(
   if (task.status !== "open") {
     return { error: "That task is no longer open." };
   }
+  if (task.currency !== "PKR") return { error: "This task’s PKR payout must be confirmed before claims open." };
+  if (task.min_rank_id > user.profile.rank_id || task.claims_used >= task.max_claims) return { error: "This task is not available at your rank or has no spaces left." };
+  const { data: existing } = await supabase.from("task_claims").select("id").eq("task_id",task.id).eq("user_id",user.id).maybeSingle();
+  if (existing) redirect(`/dashboard/tasks/${task.id}`);
 
   // Monthly quota. The plan sets it; null means unlimited.
   const { data: membership } = await supabase
@@ -83,16 +91,19 @@ export async function claimTask(
 
   revalidatePath("/dashboard/tasks");
   revalidatePath("/dashboard");
-  return { ok: "Claimed. The deadline is running." };
+  redirect(`/dashboard/tasks/${task.id}`);
 }
 
 /* --------------------------------------------------------------- submit ---- */
 
 const submissionSchema = z.object({
   claim_id: z.string().uuid(),
-  body: z.string().trim().min(50, "Write at least a couple of sentences."),
+  body: z.string().trim().min(50, "Write at least a couple of sentences.").max(40000),
   notes: z.string().trim().max(2000).optional(),
   file_paths: z.array(z.string()).max(10).default([]),
+  sources: z.array(z.url().refine(v => /^https?:\/\//i.test(v), "Use an http or https source URL.")).max(5),
+  ai_use: z.string().trim().min(2, "Describe any AI help, or write None.").max(500),
+  confirmed: z.literal("on", { error: "Confirm your work meets the submission requirements." }),
 });
 
 export async function submitWork(
@@ -103,6 +114,9 @@ export async function submitWork(
     claim_id: formData.get("claim_id"),
     body: formData.get("body"),
     notes: formData.get("notes") || undefined,
+    sources: String(formData.get("sources") ?? "").split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+    ai_use: formData.get("ai_use"),
+    confirmed: formData.get("confirmed"),
     // Every path must sit inside the caller's own storage folder. The bucket
     // policy enforces this too, but rejecting it here gives a real message
     // instead of a silent 403 later.
@@ -123,12 +137,14 @@ export async function submitWork(
 
   const { data: claim } = await supabase
     .from("task_claims")
-    .select("id, task_id, status, due_at")
+    .select("id, task_id, status, due_at, tasks(brief)")
     .eq("id", parsed.data.claim_id)
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (!claim) return { error: "That claim is not yours." };
+  const workError = validateTaskWork(parseTaskBrief(claim.tasks?.brief ?? ""), parsed.data.body, parsed.data.file_paths.length, parsed.data.sources);
+  if (workError) return { error: workError };
   if (!["active", "revision"].includes(claim.status)) {
     return { error: "This task is not open for submission." };
   }
@@ -142,11 +158,13 @@ export async function submitWork(
     .eq("claim_id", claim.id);
 
   const foreign = parsed.data.file_paths.filter(
-    (path) => !path.startsWith(`${user.id}/`),
+    (path) => !path.startsWith(`${user.id}/`) || path.includes("..") || path.split("/").length !== 2,
   );
   if (foreign.length > 0) {
     return { error: "One of those files is not yours." };
   }
+  const proofs = await Promise.all(parsed.data.file_paths.map(path => supabase.storage.from("submissions").info(path)));
+  if (proofs.some(p => p.error || !p.data)) return { error: "An attachment is missing or could not be verified. Upload it again before submitting." };
 
   const { error } = await supabase.from("submissions").insert({
     claim_id: claim.id,
@@ -154,18 +172,24 @@ export async function submitWork(
     user_id: user.id,
     version: (count ?? 0) + 1,
     body: parsed.data.body,
-    notes: parsed.data.notes ?? null,
+    notes: [parsed.data.notes, `AI assistance: ${parsed.data.ai_use}`, parsed.data.sources.length ? `Sources:\n${parsed.data.sources.join("\n")}` : "Sources: supplied task material only"].filter(Boolean).join("\n\n"),
     file_paths: parsed.data.file_paths,
   });
 
   if (error) return { error: "Could not save the submission." };
 
-  await supabase
+  // New installations queue this in the insertion transaction. Keep a checked
+  // fallback while the incremental migration is waiting to be applied.
+  const { data: savedClaim } = await supabase.from("task_claims").select("status").eq("id",claim.id).maybeSingle();
+  const { error: statusError } = savedClaim?.status === "submitted" ? { error: null } : await supabase
     .from("task_claims")
     .update({ status: "submitted" })
     .eq("id", claim.id);
+  if (statusError) return { error: "Your work was saved, but its review status could not be updated. Contact support before submitting again." };
 
   revalidatePath("/dashboard/tasks");
+  revalidatePath(`/dashboard/tasks/${claim.task_id}`);
+  revalidatePath("/admin/reviews");
   return { ok: "Submitted. A reviewer will score it against the rubric." };
 }
 

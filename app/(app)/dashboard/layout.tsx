@@ -14,7 +14,7 @@ export default async function DashboardLayout({
 
   const supabase = await createClient();
 
-  const [{ count: unread }, { count: activeTasks }] = await Promise.all([
+  const [{ count: unread }, { count: activeTasks }, { data: roles }] = await Promise.all([
     supabase
       .from("notifications")
       .select("*", { count: "exact", head: true })
@@ -25,18 +25,28 @@ export default async function DashboardLayout({
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id)
       .in("status", ["active", "revision"]),
+    supabase.from("user_roles").select("role").eq("user_id", user.id),
   ]);
+
+  // Anyone from reviewer upwards can open /admin. Showing the link only to
+  // them keeps it out of the way for members, who would only meet a redirect.
+  const isStaff = (roles ?? []).some((r) =>
+    ["reviewer", "support", "finance", "admin", "owner"].includes(r.role),
+  );
 
   const nav: NavItem[] = [
     { href: "/dashboard", label: "Overview", icon: "overview" },
     { href: "/dashboard/referrals", label: "Referrals", icon: "referrals" },
     { href: "/dashboard/tasks", label: "Tasks", icon: "tasks", badge: activeTasks ?? 0 },
     { href: "/dashboard/earnings", label: "Earnings", icon: "earnings" },
-    { href: "/dashboard/billing", label: "Billing", icon: "billing" },
+    { href: "/dashboard/billing", label: "Plans & payments", icon: "billing" },
     { href: "/dashboard/leaderboard", label: "Board", icon: "leaderboard" },
     { href: "/dashboard/rank", label: "Rank", icon: "rank" },
     { href: "/dashboard/notifications", label: "Notifications", icon: "notifications" },
     { href: "/dashboard/settings", label: "Settings", icon: "settings" },
+    ...(isStaff
+      ? [{ href: "/admin", label: "Admin panel", icon: "admin" as const }]
+      : []),
   ];
 
   const rank = (user.profile as { ranks?: { name?: string } }).ranks;

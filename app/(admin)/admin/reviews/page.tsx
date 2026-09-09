@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageTitle, Card, Empty } from "@/components/app/ui";
 import { ReviewForm } from "@/components/admin/review-form";
 import { formatMoney, formatDate } from "@/lib/utils";
+import { TaskInstructions } from "@/components/app/task-instructions";
 
 export const metadata: Metadata = { title: "Review queue" };
 
@@ -12,7 +13,7 @@ export default async function ReviewsPage() {
   const { data: pending } = await supabase
     .from("task_claims")
     .select(
-      "id, status, due_at, claimed_at, profiles(full_name, username), tasks(title, payout_minor, brief), submissions(id, version, body, notes, created_at)",
+      "id, status, due_at, claimed_at, profiles(full_name, username), tasks(title, payout_minor, brief), submissions(id, version, body, notes, created_at, file_paths)",
     )
     .in("status", ["submitted", "in_review"])
     .order("claimed_at", { ascending: true })
@@ -48,6 +49,7 @@ export default async function ReviewsPage() {
               body: string | null;
               notes: string | null;
               created_at: string;
+              file_paths: string[];
             }[];
             const latest = submissions.sort((a, b) => b.version - a.version)[0];
 
@@ -72,9 +74,7 @@ export default async function ReviewsPage() {
                   <summary className="cursor-pointer text-small font-medium">
                     The brief
                   </summary>
-                  <p className="mt-3 whitespace-pre-line text-small text-muted">
-                    {task?.brief}
-                  </p>
+                  <div className="mt-3"><TaskInstructions brief={task?.brief ?? ""}/></div>
                 </details>
 
                 <div className="mt-5 rounded-sm border border-line bg-bg p-4">
@@ -90,6 +90,7 @@ export default async function ReviewsPage() {
                       {latest.notes}
                     </p>
                   ) : null}
+                  {latest.file_paths.length ? <ul className="mt-4 flex flex-wrap gap-3">{latest.file_paths.map((path,index)=><li key={path}><a href={`/api/submissions/${latest.id}/files/${index}`} className="inline-flex min-h-11 items-center rounded-control border border-line bg-surface px-4 text-small text-violet">Download proof {index+1}</a></li>)}</ul> : null}
                 </div>
 
                 <div className="mt-5 border-t border-line pt-5">

@@ -111,7 +111,7 @@ function PlanCard({ plan, currency }: { plan: Plan; currency: CurrencyCode }) {
 
       <div className="mt-8">
         <ButtonLink
-          href="/signup"
+          href={`/dashboard/billing?plan=${plan.code}`}
           variant={dark ? "primary" : "tertiary"}
           size="lg"
           className="w-full"

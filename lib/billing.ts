@@ -1,51 +1,47 @@
-/* ==========================================================================
-   BILLING RAILS
-
-   The Pakistan payin problem is still open, so the platform ships with the one
-   rail that works there today: a bank transfer the member declares and an
-   admin confirms. It is slower than a card, and it is honest about that.
-
-   Every rail ends up in the same place: public.record_payment, which opens the
-   account, awards the one time commission and the leaderboard points in a
-   single transaction. Adding a card provider later means a webhook that calls
-   that same function, and nothing downstream changes.
-   ========================================================================== */
-
-export type RailId = "bank_transfer" | "card";
-
-export type Rail = {
-  id: RailId;
-  name: string;
-  available: boolean;
-  clearing: string;
-  body: string;
-};
-
-export const rails: Rail[] = [
-  {
-    id: "bank_transfer",
-    name: "Bank transfer",
-    available: true,
-    clearing: "Confirmed within one working day",
-    body: "Transfer the amount from your own bank or wallet app, then tell us the reference. We check it against the account and switch your plan on. This is the rail most members in Pakistan will use.",
-  },
-  {
-    id: "card",
-    name: "Card",
-    available: false,
-    clearing: "Instant",
-    body: "Not live yet. Many Pakistani debit cards are not enabled for international payments by default, so we are not switching this on until a local provider is contracted. We will say so here when it is.",
-  },
-];
-
-/**
- * ⚠ PLACEHOLDER. Replace with the real company account before launch, and never
- * show a member an account that is not yet under the company's control.
- */
-export const bankDetails = {
-  accountName: "Assignwork Ltd",
-  bank: "PLACEHOLDER, add the real bank",
-  accountNumber: "PLACEHOLDER",
-  iban: "PLACEHOLDER",
-  isReal: false,
+/** The only incoming payment method. Withdrawals are separate. */
+export const jazzCash = {
+  id: "jazzcash",
+  name: "JazzCash",
+  recipient: "Muhammad Waqas",
+  accountLabel: "9104",
+  qrPath: "/images/payments/jazzcash-qr.png",
+  proofBucket: "payment-proofs",
+  maxProofBytes: 5 * 1024 * 1024,
 } as const;
+
+export const REVIEW_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+export function reviewDeadline(submittedAt: string): number {
+  return new Date(submittedAt).getTime() + REVIEW_WINDOW_MS;
+}
+
+export function reviewClock(submittedAt: string, now: number) {
+  const deadline = reviewDeadline(submittedAt);
+  const valid = Number.isFinite(deadline) && Number.isFinite(now);
+  const seconds = valid ? Math.min(21600, Math.max(0, Math.ceil((deadline - now) / 1000))) : 0;
+  return {
+    valid,
+    overdue: valid && now >= deadline,
+    hours: String(Math.floor(seconds / 3600)).padStart(2, "0"),
+    minutes: String(Math.floor((seconds % 3600) / 60)).padStart(2, "0"),
+    seconds: String(seconds % 60).padStart(2, "0"),
+  };
+}
+
+export function proofMime(bytes: Uint8Array): "image/png" | "image/jpeg" | "image/webp" | null {
+  if (bytes.length < 12) return null;
+  if ([137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v)) return "image/png";
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return "image/jpeg";
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.slice(start, end));
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  return null;
+}
+
+export function ownsPaymentProof(userId: string, path: string): boolean {
+  return path.startsWith(`${userId}/`) && /^[a-f0-9-]{36}\/[a-f0-9-]{36}\.(png|jpg|webp)$/.test(path);
+}
+
+export function hasPaidAccess(profileStatus: string, membership: { status: string; expires_at: string | null; revoked_at: string | null } | null, now: number) {
+  return profileStatus === "active" && membership?.status === "active" && !membership.revoked_at &&
+    (!membership.expires_at || new Date(membership.expires_at).getTime() > now);
+}

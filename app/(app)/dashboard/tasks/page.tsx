@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { requirePaidAccess } from "@/lib/payment-access";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { PageTitle, Card, Status, Empty } from "@/components/app/ui";
-import { ClaimButton, SubmitWorkForm } from "@/components/app/task-forms";
+import { ClaimButton } from "@/components/app/task-forms";
 import { TimeLeft } from "@/components/app/time-left";
 import { formatMoney, formatDate } from "@/lib/utils";
 
@@ -16,6 +18,7 @@ export default async function TasksPage({
   const { tab = "available" } = await searchParams;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await requirePaidAccess(user);
 
   const supabase = await createClient();
 
@@ -103,14 +106,16 @@ export default async function TasksPage({
             body="New tasks go up every weekday. We would rather show you an empty pool than tasks nobody can claim."
           />
         ) : (
-          <div className="grid gap-px lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2">
             {(open ?? []).map((task) => {
               const category = task.task_categories as unknown as { name: string } | null;
               const alreadyClaimed = claimedIds.has(task.id);
               const quotaHit = remaining !== null && remaining <= 0;
               const rankLocked = task.min_rank_id > user.profile.rank_id;
 
-              const reason = !plan
+              const reason = task.currency !== "PKR" ? "Payout confirmation pending"
+                : task.claims_used >= task.max_claims ? "All spaces are taken"
+                : !plan
                 ? "You need an active plan"
                 : rankLocked
                   ? `Needs rank ${task.min_rank_id} or above`
@@ -121,7 +126,7 @@ export default async function TasksPage({
                       : null;
 
               return (
-                <Card key={task.id} className="flex flex-col">
+                <Card key={task.id} className="flex flex-col rounded-panel">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-micro uppercase tracking-[0.08em] text-muted">
@@ -130,7 +135,7 @@ export default async function TasksPage({
                       <h2 className="mt-2 text-h4">{task.title}</h2>
                     </div>
                     <span className="shrink-0 text-h4 tabular">
-                      {formatMoney(task.payout_minor)}
+                      {formatMoney(task.payout_minor, task.currency === "USD" ? "USD" : "PKR")}
                     </span>
                   </div>
 
@@ -154,7 +159,8 @@ export default async function TasksPage({
                   </dl>
 
                   <div className="mt-5">
-                    <ClaimButton taskId={task.id} disabledReason={reason} />
+                    {alreadyClaimed ? <Link href={`/dashboard/tasks/${task.id}#submission`} className="inline-flex min-h-11 items-center rounded-control bg-lime px-5 text-small font-medium">Open & submit work</Link> : <ClaimButton taskId={task.id} disabledReason={reason} />}
+                    <Link href={`/dashboard/tasks/${task.id}`} className="mt-3 inline-flex min-h-9 items-center text-small text-violet">Read instructions →</Link>
                   </div>
                 </Card>
               );
@@ -193,17 +199,8 @@ export default async function TasksPage({
                     </div>
                   </div>
 
-                  <details className="mt-5 border-t border-line pt-4">
-                    <summary className="cursor-pointer text-small font-medium">
-                      Read the brief
-                    </summary>
-                    <p className="mt-3 whitespace-pre-line text-small text-muted">
-                      {task?.brief}
-                    </p>
-                  </details>
-
                   <div className="mt-5 border-t border-line pt-5">
-                    <SubmitWorkForm claimId={claim.id} />
+                    <Link href={`/dashboard/tasks/${claim.task_id}#submission`} className="inline-flex min-h-11 items-center rounded-control bg-lime px-5 text-small font-medium">Continue & submit work →</Link>
                   </div>
                 </Card>
               );

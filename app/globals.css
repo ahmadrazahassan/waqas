@@ -28,6 +28,9 @@
   --color-lime: #d4f717;
   --color-lime-press: #c2e40e;
   --color-violet: #5a38fd;
+  --color-violet-soft: #f0edff;
+  --radius-panel: 18px;
+  --radius-control: 12px;
   --color-violet-press: #4a2ce0;
 
   --color-bg: #f1f1f1;

@@ -25,6 +25,7 @@ export function FileUpload({
   accept,
   multiple = false,
   onUploaded,
+  onPathsChanged,
 }: {
   bucket: "submissions" | "avatars" | "kyc";
   label: string;
@@ -32,6 +33,7 @@ export function FileUpload({
   accept?: string;
   multiple?: boolean;
   onUploaded: (path: string) => void;
+  onPathsChanged?: (paths: string[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Uploaded[]>([]);
@@ -40,6 +42,10 @@ export function FileUpload({
 
   async function handle(selected: FileList | null) {
     if (!selected || selected.length === 0) return;
+    if (Array.from(selected).some(f => f.size > 25 * 1024 * 1024) || (multiple && files.length + selected.length > 10)) {
+      setError("Use up to 10 files, each no larger than 25 MB.");
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -79,12 +85,16 @@ export function FileUpload({
       onUploaded(path);
     }
 
-    setFiles((prev) => (multiple ? [...prev, ...done] : done));
+    const next = multiple ? [...files, ...done] : done;
+    setFiles(next);
+    onPathsChanged?.(next.map(f => f.path));
     setBusy(false);
   }
 
   function remove(path: string) {
-    setFiles((prev) => prev.filter((f) => f.path !== path));
+    const next = files.filter(f => f.path !== path);
+    setFiles(next);
+    onPathsChanged?.(next.map(f => f.path));
     onUploaded("");
   }
 

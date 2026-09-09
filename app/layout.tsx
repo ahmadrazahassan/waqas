@@ -20,6 +20,10 @@ export const metadata: Metadata = {
   },
   description: site.description,
   applicationName: site.name,
+  icons: {
+    icon: [{ url: "/brand/assignwork-mark.png", type: "image/png", sizes: "1280x1280" }],
+    apple: [{ url: "/brand/assignwork-mark.png", type: "image/png", sizes: "1280x1280" }],
+  },
   openGraph: {
     type: "website",
     locale: "en_GB",
