@@ -26,6 +26,7 @@ export default async function AdminOverviewPage() {
     { count: pendingKyc },
     { count: openClaims },
     { data: recentAudit },
+    { count: paymentReviews, error: paymentReviewError },
   ] = await Promise.all([
     supabase.from("profiles").select("*", { count: "exact", head: true }),
     supabase
@@ -65,6 +66,7 @@ export default async function AdminOverviewPage() {
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("kyc_status", "pending"),
     supabase.from("task_claims").select("id", { count: "exact", head: true }).in("status", ["active", "submitted", "in_review"]),
     supabase.from("audit_log").select("id, action, subject_table, subject_id, created_at").order("created_at", { ascending: false }).limit(8),
+    supabase.from("payment_declarations").select("id", { count: "exact", head: true }).eq("status", "submitted"),
   ]);
 
   const mrr = (monthPayments ?? []).reduce((s, p) => s + p.gross_minor, 0);
@@ -95,10 +97,11 @@ export default async function AdminOverviewPage() {
         />
       </div>
 
-      <div className="mt-px grid gap-px sm:grid-cols-3">
+      <div className="mt-px grid gap-px sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Payment reviews" value={paymentReviewError ? "Unavailable" : String(paymentReviews ?? 0)} sub="Receipts awaiting confirmation" href="/admin/payments" tone={paymentReviews ? "lime" : "light"} />
         <StatTile label="Open tasks" value={String(openTasks ?? 0)} href="/admin/tasks" />
         <StatTile
-          label="Awaiting review"
+          label="Task reviews"
           value={String(reviewQueue ?? 0)}
           href="/admin/reviews"
           tone={reviewQueue && reviewQueue > 0 ? "lime" : "light"}

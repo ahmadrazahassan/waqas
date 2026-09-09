@@ -5,7 +5,7 @@ import { ReviewForm } from "@/components/admin/review-form";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { TaskInstructions } from "@/components/app/task-instructions";
 
-export const metadata: Metadata = { title: "Review queue" };
+export const metadata: Metadata = { title: "Task reviews" };
 
 export default async function ReviewsPage() {
   const supabase = await createClient();
@@ -22,7 +22,7 @@ export default async function ReviewsPage() {
   return (
     <>
       <PageTitle
-        title="Review queue"
+        title="Task reviews"
         lead="Score against the rubric the member could read before they started. Approving pays them immediately."
       />
 

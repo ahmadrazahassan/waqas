@@ -342,6 +342,29 @@ const memberSponsorSchema = z.object({
   acknowledged: z.literal("on", { error: "Confirm the audited referral change." }),
 });
 
+export async function updateMemberPlan(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  if (actor.profile.status !== "active") return { error: "Your admin account must be active." };
+  const parsed = z.object({
+    member_id: z.string().uuid(),
+    plan_id: z.coerce.number().int().positive(),
+    status: z.enum(["active", "paused", "cancelled"]),
+    reason: z.string().trim().min(10, "Add a reason for this plan change.").max(500),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the plan details." };
+  if (!hasServiceRole()) return { error: "Plan controls are temporarily unavailable." };
+  const { error } = await createAdminClient().rpc("admin_set_member_plan", {
+    p_member: parsed.data.member_id, p_plan: parsed.data.plan_id,
+    p_status: parsed.data.status, p_reason: parsed.data.reason, p_actor: actor.id,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/admin", "layout");
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/pricing");
+  return { ok: parsed.data.status === "active" ? "Plan saved. Account and plan access are active." : "Plan access updated." };
+}
+
 export async function updateMemberSponsor(_prev: AdminState, formData: FormData): Promise<AdminState> {
   let actor;
   try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
@@ -672,7 +695,7 @@ export async function decideDeclaration(
       .eq("status", "submitted").select("id").maybeSingle();
     if (rejectError || !updated) return { error: "Could not reject this payment. Refresh the queue and try again." };
 
-    revalidatePath("/admin/payments");
+    revalidatePath("/admin", "layout");
     revalidatePath("/dashboard", "layout");
     revalidatePath("/pricing");
     return { ok: "Rejected, and the member has been told why." };
@@ -697,9 +720,8 @@ export async function decideDeclaration(
     return { error: `Could not confirm it: ${error.message}` };
   }
 
-  revalidatePath("/admin/payments");
+  revalidatePath("/admin", "layout");
   revalidatePath("/dashboard", "layout");
   revalidatePath("/pricing");
-  revalidatePath("/admin/members");
   return { ok: "Payment verified. The account is active and plan access is unlocked." };
 }

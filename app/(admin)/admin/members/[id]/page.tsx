@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { MemberPlanControls } from "@/components/admin/member-plan-controls";
 import { PageTitle, Card, DataTable, Empty, Status } from "@/components/app/ui";
 import { MemberControls } from "@/components/admin/member-controls";
 import { MemberFinanceControls } from "@/components/admin/member-finance-controls";
@@ -13,6 +14,11 @@ export const metadata: Metadata = { title: "Member management" };
 export default async function MemberDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const [actor, { data: plans }, { count: pendingReceipts }] = await Promise.all([
+    getCurrentUser(),
+    supabase.from("plans").select("id, name, price_minor").eq("is_active", true).order("price_minor"),
+    supabase.from("payment_declarations").select("id", { count: "exact", head: true }).eq("user_id", id).eq("status", "submitted"),
+  ]);
   const [{ data: member }, { data: membership }, { data: claims }, { data: referrals }, { data: commissions }, { data: fraud }, { data: audit }, { data: wallet }, { data: sponsors }] = await Promise.all([
     supabase.from("profiles").select("*, ranks(*)").eq("id", id).maybeSingle(),
     supabase.from("memberships").select("*, plans(name, price_minor)").eq("user_id", id).order("created_at", { ascending: false }).limit(5),
@@ -26,7 +32,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
   ]);
   if (!member) notFound();
   const rank = member.ranks as unknown as { name: string; multiplier_bps: number; direct_referrals: number } | null;
-  const currentMembership = membership?.[0] as unknown as { status: string; expires_at: string | null; plans: { name: string; price_minor: number } | null } | undefined;
+  const currentMembership = membership?.find(m => ["active", "trialing", "past_due"].includes(m.status)) ?? membership?.[0];
   const taskRows = (claims ?? []) as unknown as { id: string; status: string; claimed_at: string; due_at: string; tasks: { title: string; payout_minor: number; currency: string } | null }[];
   const referralRows = (referrals ?? []) as unknown as { id: string; full_name: string; username: string; status: string; created_at: string; ranks: { name: string } | null }[];
   const commissionRows = (commissions ?? []) as unknown as { id: string; amount_minor: number; currency: string; depth: number; status: string; created_at: string }[];
@@ -36,6 +42,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
   return (
     <>
       <PageTitle title={member.full_name} lead={`@${member.username} · joined ${formatDate(member.created_at)} · member operations profile`}>
+        {actor?.isAdmin ? <a href="#plan-access" className="inline-flex h-10 items-center rounded-control bg-lime px-4 text-small font-medium">Change plan / activate</a> : null}
         <Link href="/admin/members" className="inline-flex h-10 items-center rounded-sm border border-line px-4 text-small">Back to members</Link>
       </PageTitle>
 
@@ -46,6 +53,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
         <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Risk signals</p><p className="mt-3 text-h3">{(fraud ?? []).filter((s) => s.state === "open").length}</p><p className="mt-2 text-small text-muted">{(fraud ?? []).length} recorded in total</p></div>
       </div>
 
+      {actor?.isAdmin ? <MemberPlanControls memberId={member.id} plans={plans ?? []} currentPlanId={currentMembership?.plan_id} currentStatus={currentMembership?.status} pendingReceipts={pendingReceipts ?? 0} /> : null}
       <div className="mt-8 grid gap-6 xl:grid-cols-12">
         <div className="xl:col-span-7"><Card><h2 className="text-h4">Member controls</h2><p className="mt-2 mb-5 text-small text-muted">Every change is written to the audit log. Historical payments and wallet entries are never deleted from this screen.</p><MemberControls member={{ id: member.id, status: member.status, kyc_status: member.kyc_status, commission_eligible: member.commission_eligible, full_name: member.full_name, display_name: member.display_name, headline: member.headline, bio: member.bio, phone_e164: member.phone_e164, country_code: member.country_code, timezone: member.timezone, leaderboard_optin: member.leaderboard_optin }} /></Card></div>
         <div className="space-y-6 xl:col-span-5"><Card><p className="text-micro uppercase tracking-widest text-muted">Identity and referral</p><dl className="mt-4 divide-y divide-line border-y border-line"><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Referral code</dt><dd className="tabular">{member.referral_code}</dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Sponsor</dt><dd className="tabular">{member.referred_by ? "Attached" : "Direct"}</dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">KYC</dt><dd><Status status={member.kyc_status} /></dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Commission</dt><dd>{member.commission_eligible ? "Eligible" : "Paused"}</dd></div></dl><MemberReferralControls memberId={member.id} currentSponsorId={member.referred_by} sponsors={sponsorRows} lockedAt={member.sponsor_locked_at} /></Card><Card><h2 className="text-h4">Recent risk signals</h2>{(fraud ?? []).length ? <ul className="mt-4 divide-y divide-line">{fraud?.slice(0, 5).map((signal) => <li key={signal.id} className="py-3"><div className="flex justify-between gap-3 text-small"><span>{signal.signal}</span><Status status={signal.state} /></div><p className="mt-1 text-micro text-muted">{signal.severity} · {formatDate(signal.created_at)}</p></li>)}</ul> : <p className="mt-3 text-small text-muted">No recorded fraud signals.</p>}</Card></div>

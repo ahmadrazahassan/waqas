@@ -12,6 +12,7 @@ function refreshBilling() {
   revalidatePath("/dashboard", "layout");
   revalidatePath("/pricing");
   revalidatePath("/admin/payments");
+  revalidatePath("/admin", "layout");
 }
 
 export async function declarePayment(_prev: BillingState, formData: FormData): Promise<BillingState> {

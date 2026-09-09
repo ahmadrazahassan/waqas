@@ -1997,6 +1997,10 @@ export type Database = {
       }
     }
     Functions: {
+      admin_set_member_plan: {
+        Args: { p_member: string; p_plan: number; p_status: string; p_reason: string; p_actor: string }
+        Returns: string
+      }
       admin_update_member_sponsor: {
         Args: { p_member: string; p_sponsor: string | null }
         Returns: undefined

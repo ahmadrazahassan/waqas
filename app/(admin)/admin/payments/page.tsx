@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
+import { RefreshQueue } from "@/components/admin/refresh-queue";
 import { reviewDeadline } from "@/lib/billing";
 import { hasServiceRole } from "@/lib/supabase/admin";
 import { PageTitle, StatTile, Card, Status, Empty, DataTable } from "@/components/app/ui";
@@ -20,7 +22,7 @@ export default async function AdminPaymentsPage() {
   const [{ data: declarations, count: pendingCount, error: queueError }, { data: payments }, { data: reviewed }] = await Promise.all([
     supabase
       .from("payment_declarations")
-      .select("*, profiles(full_name, username, country_code), plans(name)", { count: "exact" })
+      .select("*, profiles!payment_declarations_user_id_fkey(full_name, username, country_code), plans(name)", { count: "exact" })
       .eq("status", "submitted")
       .order("created_at", { ascending: true })
       .limit(100),
@@ -44,7 +46,7 @@ export default async function AdminPaymentsPage() {
       <PageTitle
         title="Payments"
         lead="Match each receipt against the JazzCash transaction history before activating the account. Approval unlocks the plan and records the payment, commission and leaderboard points together. A screenshot alone is not proof of settled funds."
-      />
+      ><RefreshQueue /></PageTitle>
 
       {!hasServiceRole() ? (
         <div className="mb-6 rounded-md border border-line border-s-2 border-s-warning bg-surface p-5">
@@ -59,8 +61,8 @@ export default async function AdminPaymentsPage() {
       ) : null}
 
       <div className="grid gap-px sm:grid-cols-3">
-        <StatTile label="Awaiting confirmation" value={String(pendingCount ?? 0)} sub="Oldest requests shown first" />
-        <StatTile label="Value in this queue" value={formatMoney(waitingValue)} tone="lime" sub="Oldest 100 requests" />
+        <StatTile label="Awaiting confirmation" value={queueError ? "Unavailable" : String(pendingCount ?? 0)} sub="Oldest requests shown first" />
+        <StatTile label="Value in this queue" value={queueError ? "Unavailable" : formatMoney(waitingValue)} tone="lime" sub="Oldest 100 requests" />
         <StatTile label="Collected" value={formatMoney(collected)} tone="ink" sub="Last 40 payments" />
       </div>
 
@@ -69,7 +71,7 @@ export default async function AdminPaymentsPage() {
         {queueError ? <p role="alert" className="mt-3 text-small text-critical">The queue could not be loaded. Refresh before making a decision.</p> : null}
         {(pendingCount ?? 0) > 100 ? <p className="mt-3 text-small text-muted">Showing the oldest 100 of {pendingCount} requests. The next requests appear as these are reviewed.</p> : null}
         <div className="mt-4 space-y-4">
-          {waiting.length === 0 ? (
+          {queueError ? null : waiting.length === 0 ? (
             <Empty
               title="Nothing waiting"
               body="Members submit a JazzCash payment screenshot from Plans & payments. New requests appear here for review."
@@ -121,12 +123,15 @@ export default async function AdminPaymentsPage() {
                       ) : null}
                     </div>
 
-                    {hasServiceRole() ? (
+                    {d.user_id === user.id ? (
+                      <p className="max-w-sm text-small text-muted">This is your own receipt. Another finance reviewer or admin must verify it.</p>
+                    ) : hasServiceRole() ? (
                       <DeclarationDecision declarationId={d.id} />
                     ) : (
                       <Status status="requested" />
                     )}
                   </div>
+                  <Link href={`/admin/members/${d.user_id}`} className="mt-4 inline-block text-small text-violet underline underline-offset-4">Open member and plan access</Link>
                 </Card>
               );
             })
