@@ -270,6 +270,141 @@ export async function setMemberStatus(
   return { ok: `Member set to ${status}.` };
 }
 
+const memberControlSchema = z.object({
+  member_id: z.string().uuid(),
+  status: z.enum(["pending", "active", "restricted", "suspended", "closed"]),
+  kyc_status: z.enum(["none", "pending", "verified", "rejected"]),
+  commission_eligible: z.boolean(),
+  note: z.string().trim().max(500),
+});
+
+const memberProfileSchema = z.object({
+  member_id: z.string().uuid(),
+  full_name: z.string().trim().min(2).max(120),
+  display_name: z.string().trim().max(80),
+  headline: z.string().trim().max(120),
+  bio: z.string().trim().max(1000),
+  phone_e164: z.string().trim().max(30).regex(/^$|^\+[1-9][0-9]{7,14}$/, "Use an international phone number or leave it blank."),
+  country_code: z.string().trim().length(2).transform((value) => value.toUpperCase()),
+  timezone: z.string().trim().min(3).max(80),
+  leaderboard_optin: z.boolean(),
+});
+
+export async function updateMemberProfile(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const parsed = memberProfileSchema.safeParse({
+    member_id: formData.get("member_id"), full_name: formData.get("full_name"), display_name: formData.get("display_name") ?? "", headline: formData.get("headline") ?? "", bio: formData.get("bio") ?? "", phone_e164: formData.get("phone_e164") ?? "", country_code: formData.get("country_code"), timezone: formData.get("timezone"), leaderboard_optin: formData.get("leaderboard_optin") === "on",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the member profile." };
+  if (!hasServiceRole()) return { error: "Profile controls are unavailable without the server service role." };
+  const admin = createAdminClient();
+  const { data: before } = await admin.from("profiles").select("full_name, display_name, headline, bio, phone_e164, country_code, timezone, leaderboard_optin").eq("id", parsed.data.member_id).maybeSingle();
+  if (!before) return { error: "Member not found." };
+  const after = { full_name: parsed.data.full_name, display_name: parsed.data.display_name || null, headline: parsed.data.headline || null, bio: parsed.data.bio || null, phone_e164: parsed.data.phone_e164 || null, country_code: parsed.data.country_code, timezone: parsed.data.timezone, leaderboard_optin: parsed.data.leaderboard_optin };
+  const { error } = await admin.from("profiles").update(after).eq("id", parsed.data.member_id);
+  if (error) return { error: `Could not update profile: ${error.message}` };
+  await admin.from("audit_log").insert({ actor_id: actor.id, action: "member.profile_updated", subject_table: "profiles", subject_id: parsed.data.member_id, before, after });
+  revalidatePath(`/admin/members/${parsed.data.member_id}`);
+  revalidatePath("/admin/members");
+  return { ok: "Member profile saved and audited." };
+}
+
+export async function updateMemberControls(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const parsed = memberControlSchema.safeParse({
+    member_id: formData.get("member_id"),
+    status: formData.get("status"),
+    kyc_status: formData.get("kyc_status"),
+    commission_eligible: formData.get("commission_eligible") === "on",
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the member controls." };
+  if (parsed.data.member_id === actor.id && parsed.data.status !== "active") return { error: "You cannot suspend or close your own staff account." };
+  if (!hasServiceRole()) return { error: "Member controls are disabled until the server service role is configured." };
+  const admin = createAdminClient();
+  const { data: before } = await admin.from("profiles").select("status, kyc_status, commission_eligible").eq("id", parsed.data.member_id).maybeSingle();
+  if (!before) return { error: "Member not found." };
+  const { error } = await admin.from("profiles").update({ status: parsed.data.status as never, kyc_status: parsed.data.kyc_status as never, commission_eligible: parsed.data.commission_eligible }).eq("id", parsed.data.member_id);
+  if (error) return { error: `Could not update member: ${error.message}` };
+  await admin.from("audit_log").insert({ actor_id: actor.id, action: "member.controls_updated", subject_table: "profiles", subject_id: parsed.data.member_id, before, after: { status: parsed.data.status, kyc_status: parsed.data.kyc_status, commission_eligible: parsed.data.commission_eligible, note: parsed.data.note || null } });
+  if (parsed.data.note) await admin.from("notifications").insert({ user_id: parsed.data.member_id, kind: "account_notice", title: "An account note was added", body: parsed.data.note, href: "/dashboard/settings" });
+  revalidatePath("/admin/members");
+  revalidatePath(`/admin/members/${parsed.data.member_id}`);
+  return { ok: `Member controls updated by ${actor.profile.full_name}.` };
+}
+
+export async function recomputeMemberRank(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const memberId = String(formData.get("member_id") ?? "");
+  if (!z.string().uuid().safeParse(memberId).success) return { error: "Invalid member." };
+  if (!hasServiceRole()) return { error: "Rank recompute is unavailable without the service role." };
+  const { error } = await createAdminClient().rpc("recompute_rank", { p_user: memberId });
+  if (error) return { error: `Could not recompute rank: ${error.message}` };
+  await createAdminClient().from("audit_log").insert({ actor_id: actor.id, action: "member.rank_recomputed", subject_table: "profiles", subject_id: memberId, after: { reason: "admin_requested" } });
+  revalidatePath("/admin/members");
+  revalidatePath(`/admin/members/${memberId}`);
+  return { ok: "Rank recalculated from verified member activity." };
+}
+
+const walletAdjustmentSchema = z.object({
+  member_id: z.string().uuid(),
+  direction: z.enum(["credit", "debit"]),
+  amount_pkr: z.coerce.number().positive().max(100000000),
+  memo: z.string().trim().min(10, "Explain why this adjustment is needed.").max(500),
+  acknowledged: z.literal("on", { error: "Confirm the audited wallet adjustment." }),
+});
+
+export async function addMemberWalletAdjustment(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["finance", "admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const parsed = walletAdjustmentSchema.safeParse({ member_id: formData.get("member_id"), direction: formData.get("direction"), amount_pkr: formData.get("amount_pkr"), memo: formData.get("memo"), acknowledged: formData.get("acknowledged") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the adjustment." };
+  if (!hasServiceRole()) return { error: "Financial controls are unavailable without the server service role." };
+  const admin = createAdminClient();
+  const amount = Math.round(parsed.data.amount_pkr * 100) * (parsed.data.direction === "credit" ? 1 : -1);
+  const { data: balance, error: balanceError } = await admin.rpc("wallet_balance", { p_user: parsed.data.member_id });
+  if (balanceError) return { error: `Could not read the member balance: ${balanceError.message}` };
+  if (amount < 0 && Math.abs(amount) > (balance ?? 0)) return { error: "A debit cannot take the member below a zero wallet balance." };
+  const refId = crypto.randomUUID();
+  const { error } = await admin.rpc("post_wallet_entry", { p_user: parsed.data.member_id, p_type: "adjustment", p_amount: amount, p_created_by: actor.id, p_ref_table: "admin_adjustments", p_ref_id: refId, p_memo: `Admin adjustment: ${parsed.data.memo}` });
+  if (error) return { error: `The ledger rejected this adjustment: ${error.message}` };
+  await admin.from("audit_log").insert({ actor_id: actor.id, action: "wallet.admin_adjustment", subject_table: "profiles", subject_id: parsed.data.member_id, after: { amount_minor: amount, direction: parsed.data.direction, memo: parsed.data.memo, reference: refId } });
+  await admin.from("notifications").insert({ user_id: parsed.data.member_id, kind: "wallet_adjustment", title: parsed.data.direction === "credit" ? "A wallet credit was added" : "A wallet correction was applied", body: parsed.data.memo, href: "/dashboard/earnings" });
+  revalidatePath(`/admin/members/${parsed.data.member_id}`);
+  revalidatePath("/admin/members");
+  return { ok: `Wallet ${parsed.data.direction} recorded as ${parsed.data.amount_pkr.toLocaleString()} PKR.` };
+}
+
+const commissionStatusSchema = z.object({
+  commission_id: z.string().uuid(),
+  member_id: z.string().uuid(),
+  status: z.enum(["pending", "review", "available", "paid", "reversed", "void"]),
+  reason: z.string().trim().min(10, "Add a reason for the commission change.").max(500),
+});
+
+export async function setCommissionStatus(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["finance", "admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const parsed = commissionStatusSchema.safeParse({ commission_id: formData.get("commission_id"), member_id: formData.get("member_id"), status: formData.get("status"), reason: formData.get("reason") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the commission change." };
+  if (!hasServiceRole()) return { error: "Commission controls are unavailable without the server service role." };
+  const admin = createAdminClient();
+  const { data: before } = await admin.from("commissions").select("id, amount_minor, status, reversed_reason, earner_id").eq("id", parsed.data.commission_id).eq("earner_id", parsed.data.member_id).maybeSingle();
+  if (!before) return { error: "Commission entry not found for this member." };
+  if (before.status === "paid" && parsed.data.status !== "paid") return { error: "A paid commission cannot be silently changed. Record a wallet correction with its own audit reason." };
+  const { error } = await admin.from("commissions").update({ status: parsed.data.status as never, reversed_reason: ["reversed", "void"].includes(parsed.data.status) ? parsed.data.reason : null }).eq("id", parsed.data.commission_id).eq("earner_id", parsed.data.member_id);
+  if (error) return { error: `Could not change commission status: ${error.message}` };
+  await admin.from("audit_log").insert({ actor_id: actor.id, action: "commission.status_changed", subject_table: "commissions", subject_id: parsed.data.commission_id, before, after: { status: parsed.data.status, reason: parsed.data.reason } });
+  await admin.from("notifications").insert({ user_id: parsed.data.member_id, kind: "commission_update", title: "A commission entry was updated", body: parsed.data.reason, href: "/dashboard/referrals" });
+  revalidatePath(`/admin/members/${parsed.data.member_id}`);
+  revalidatePath("/admin/referrals");
+  revalidatePath("/dashboard/referrals");
+  return { ok: `Commission marked ${parsed.data.status}.` };
+}
+
 /* --------------------------------------------------------------- tasks ----- */
 
 const taskSchema = z.object({
@@ -281,13 +416,69 @@ const taskSchema = z.object({
   category_id: z.coerce.number().int().positive(),
   summary: z.string().trim().min(20).max(400),
   brief: z.string().trim().min(50),
-  payout_minor: z.coerce.number().int().positive(),
+  payout_amount: z.coerce.number().positive().max(10000000),
+  currency: z.enum(["PKR", "USD"]),
   min_rank_id: z.coerce.number().int().min(1).max(8),
   due_hours: z.coerce.number().int().positive(),
   max_claims: z.coerce.number().int().positive(),
+  deliverable_type: z.string().trim().min(2).max(40),
+  word_count_target: z.number().int().min(0).max(100000).nullable(),
+  opens_at: z.string().trim().optional(),
+  early_access_opens_at: z.string().trim().optional(),
   compliance_flag: z.enum(["standard", "tutoring", "restricted"]),
   publish: z.boolean(),
 });
+
+function parseTaskForm(formData: FormData) {
+  return taskSchema.safeParse({
+    title: formData.get("title"),
+    slug: formData.get("slug"),
+    category_id: formData.get("category_id"),
+    summary: formData.get("summary"),
+    brief: formData.get("brief"),
+    payout_amount: formData.get("payout_amount"),
+    currency: formData.get("currency") || "PKR",
+    min_rank_id: formData.get("min_rank_id"),
+    due_hours: formData.get("due_hours"),
+    max_claims: formData.get("max_claims"),
+    deliverable_type: formData.get("deliverable_type") || "text",
+    word_count_target: String(formData.get("word_count_target") ?? "").trim()
+      ? Number(formData.get("word_count_target"))
+      : null,
+    opens_at: String(formData.get("opens_at") ?? "").trim(),
+    early_access_opens_at: String(formData.get("early_access_opens_at") ?? "").trim(),
+    compliance_flag: formData.get("compliance_flag"),
+    publish: formData.get("publish") === "on",
+  });
+}
+
+function taskValues(data: z.infer<typeof taskSchema>) {
+  const now = new Date().toISOString();
+  const toIso = (value: string | undefined, fallback: string | null) => {
+    if (!value) return fallback;
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : fallback;
+  };
+  const opensAt = toIso(data.opens_at, now) ?? now;
+  const earlyAccess = toIso(data.early_access_opens_at, null);
+  return {
+    title: data.title,
+    slug: data.slug,
+    category_id: data.category_id,
+    summary: data.summary,
+    brief: data.brief,
+    payout_minor: Math.round(data.payout_amount * 100),
+    currency: data.currency,
+    min_rank_id: data.min_rank_id,
+    due_hours: data.due_hours,
+    max_claims: data.max_claims,
+    deliverable_type: data.deliverable_type,
+    word_count_target: data.word_count_target,
+    opens_at: opensAt,
+    early_access_opens_at: earlyAccess,
+    compliance_flag: data.compliance_flag,
+  };
+}
 
 export async function createTask(
   _prev: AdminState,
@@ -300,19 +491,7 @@ export async function createTask(
     return { error: (e as Error).message };
   }
 
-  const parsed = taskSchema.safeParse({
-    title: formData.get("title"),
-    slug: formData.get("slug"),
-    category_id: formData.get("category_id"),
-    summary: formData.get("summary"),
-    brief: formData.get("brief"),
-    payout_minor: Number(formData.get("payout_rupees")) * 100,
-    min_rank_id: formData.get("min_rank_id"),
-    due_hours: formData.get("due_hours"),
-    max_claims: formData.get("max_claims"),
-    compliance_flag: formData.get("compliance_flag"),
-    publish: formData.get("publish") === "on",
-  });
+  const parsed = parseTaskForm(formData);
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check the form." };
@@ -329,10 +508,9 @@ export async function createTask(
 
   const supabase = await createClient();
   const { error } = await supabase.from("tasks").insert({
-    ...parsed.data,
+    ...taskValues(parsed.data),
     status: parsed.data.publish ? "open" : "draft",
     created_by: user.id,
-    publish: undefined,
   } as never);
 
   if (error) {
@@ -343,6 +521,47 @@ export async function createTask(
 
   revalidatePath("/admin/tasks");
   return { ok: parsed.data.publish ? "Published." : "Saved as a draft." };
+}
+
+export async function updateTask(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let user;
+  try { user = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const taskId = String(formData.get("task_id") ?? "");
+  if (!z.string().uuid().safeParse(taskId).success) return { error: "That task could not be identified." };
+  const parsed = parseTaskForm(formData);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  if (parsed.data.compliance_flag === "restricted") {
+    const current = await (await createClient()).from("tasks").select("status").eq("id", taskId).maybeSingle();
+    if (current.data?.status === "open" || current.data?.status === "scheduled") return { error: "Pause this task before marking it restricted." };
+  }
+  const supabase = await createClient();
+  const { data: before } = await supabase.from("tasks").select("*").eq("id", taskId).maybeSingle();
+  if (!before) return { error: "Task not found." };
+  const { error } = await supabase.from("tasks").update(taskValues(parsed.data) as never).eq("id", taskId);
+  if (error) return { error: error.code === "23505" ? "That slug is already used." : `Could not update the task: ${error.message}` };
+  await supabase.rpc("write_audit", { p_action: "task.updated", p_table: "tasks", p_id: taskId, p_before: before, p_after: taskValues(parsed.data) });
+  revalidatePath("/admin/tasks");
+  revalidatePath(`/admin/tasks/${taskId}`);
+  revalidatePath("/tasks");
+  return { ok: `Task updated by ${user.profile.full_name}.` };
+}
+
+export async function setTaskStatus(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let user;
+  try { user = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const taskId = String(formData.get("task_id") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!z.string().uuid().safeParse(taskId).success || !["draft", "scheduled", "open", "completed", "cancelled", "expired"].includes(status)) return { error: "Invalid task lifecycle change." };
+  const supabase = await createClient();
+  const { data: task } = await supabase.from("tasks").select("id, status, compliance_flag, title").eq("id", taskId).maybeSingle();
+  if (!task) return { error: "Task not found." };
+  if (["open", "scheduled"].includes(status) && task.compliance_flag === "restricted") return { error: "Restricted tasks cannot be published." };
+  const { error } = await supabase.from("tasks").update({ status: status as never }).eq("id", taskId);
+  if (error) return { error: `Could not change task status: ${error.message}` };
+  await supabase.rpc("write_audit", { p_action: `task.${status}`, p_table: "tasks", p_id: taskId, p_before: { status: task.status }, p_after: { status, title: task.title, actor: user.id } });
+  revalidatePath("/admin/tasks");
+  revalidatePath("/tasks");
+  return { ok: `Task marked ${status}.` };
 }
 
 /* ------------------------------------------------ verify a JazzCash payment */

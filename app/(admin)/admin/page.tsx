@@ -23,6 +23,9 @@ export default async function AdminOverviewPage() {
     { count: reviewQueue },
     { count: openFraud },
     { data: recentMembers },
+    { count: pendingKyc },
+    { count: openClaims },
+    { data: recentAudit },
   ] = await Promise.all([
     supabase.from("profiles").select("*", { count: "exact", head: true }),
     supabase
@@ -59,6 +62,9 @@ export default async function AdminOverviewPage() {
       .select("id, full_name, username, country_code, status, created_at, ranks(name)")
       .order("created_at", { ascending: false })
       .limit(8),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).eq("kyc_status", "pending"),
+    supabase.from("task_claims").select("id", { count: "exact", head: true }).in("status", ["active", "submitted", "in_review"]),
+    supabase.from("audit_log").select("id, action, subject_table, subject_id, created_at").order("created_at", { ascending: false }).limit(8),
   ]);
 
   const mrr = (monthPayments ?? []).reduce((s, p) => s + p.gross_minor, 0);
@@ -102,6 +108,12 @@ export default async function AdminOverviewPage() {
           value={String(openFraud ?? 0)}
           href="/admin/fraud"
         />
+      </div>
+
+      <div className="mt-px grid gap-px sm:grid-cols-3">
+        <StatTile label="Active claims" value={String(openClaims ?? 0)} sub="Members currently working" href="/admin/reviews" />
+        <StatTile label="KYC pending" value={String(pendingKyc ?? 0)} sub="Identity checks to review" href="/admin/members" tone={pendingKyc ? "lime" : "light"} />
+        <StatTile label="Staff activity" value={String(recentAudit?.length ?? 0)} sub="Latest audit entries shown below" />
       </div>
 
       <div className="mt-8">
@@ -155,6 +167,21 @@ export default async function AdminOverviewPage() {
               </ul>
             )}
           </div>
+        </Card>
+      </div>
+
+      <div className="mt-8 grid gap-6 xl:grid-cols-2">
+        <Card>
+          <div className="flex items-baseline justify-between gap-4"><h2 className="text-h4">Operations queue</h2><span className="text-micro uppercase tracking-widest text-muted">Next actions</span></div>
+          <ul className="mt-4 divide-y divide-line border-y border-line">
+            <li className="flex items-center justify-between gap-4 py-4"><div><p className="text-small font-medium">Payment verification</p><p className="text-micro text-muted">Receipts waiting for a finance decision</p></div><Link href="/admin/payments" className="text-small text-violet underline-offset-4 hover:underline">Open queue</Link></li>
+            <li className="flex items-center justify-between gap-4 py-4"><div><p className="text-small font-medium">Task submissions</p><p className="text-micro text-muted">Score work against the member-facing brief</p></div><Link href="/admin/reviews" className="text-small text-violet underline-offset-4 hover:underline">Review work</Link></li>
+            <li className="flex items-center justify-between gap-4 py-4"><div><p className="text-small font-medium">Member health</p><p className="text-micro text-muted">KYC, restrictions and fraud signals</p></div><Link href="/admin/members" className="text-small text-violet underline-offset-4 hover:underline">Manage members</Link></li>
+          </ul>
+        </Card>
+        <Card>
+          <div className="flex items-baseline justify-between gap-4"><h2 className="text-h4">Recent audit activity</h2><Link href="/admin/members" className="text-small text-violet underline-offset-4 hover:underline">Member controls</Link></div>
+          {(recentAudit ?? []).length ? <ul className="mt-4 divide-y divide-line border-y border-line">{recentAudit?.map((entry) => <li key={entry.id} className="flex items-center justify-between gap-4 py-3"><div><p className="text-small font-medium">{entry.action}</p><p className="text-micro text-muted">{entry.subject_table} · {entry.subject_id ? `${entry.subject_id.slice(0, 8)}…` : "system"}</p></div><span className="shrink-0 text-micro text-muted">{formatDate(entry.created_at)}</span></li>)}</ul> : <Empty title="No audit activity" body="Operational changes will appear here as staff use the console." />}
         </Card>
       </div>
     </>

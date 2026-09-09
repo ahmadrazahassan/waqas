@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageTitle, Card, Status, Empty, DataTable } from "@/components/app/ui";
 import { formatDate } from "@/lib/utils";
 import { CountryChip } from "@/components/ui/flag";
+import { route } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Members" };
 
@@ -46,6 +48,12 @@ export default async function MembersPage({
         title="Members"
         lead="Every account, newest first. Search by name or username."
       />
+
+      <div className="mb-6 grid gap-px sm:grid-cols-3">
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Showing</p><p className="mt-3 text-h3 tabular">{members?.length ?? 0}</p><p className="mt-1 text-small text-muted">members in this view</p></div>
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Active</p><p className="mt-3 text-h3 tabular">{(members ?? []).filter((m) => m.status === "active").length}</p><p className="mt-1 text-small text-muted">access currently open</p></div>
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Needs attention</p><p className="mt-3 text-h3 tabular">{(members ?? []).filter((m) => ["restricted", "suspended"].includes(m.status) || m.kyc_status === "pending").length}</p><p className="mt-1 text-small text-muted">restricted, suspended or KYC pending</p></div>
+      </div>
 
       <Card className="mb-6">
         <form className="flex flex-wrap items-end gap-3">
@@ -108,7 +116,7 @@ export default async function MembersPage({
             header: "Member",
             render: (m) => (
               <span>
-                <span className="block font-medium">{m.full_name}</span>
+                <Link href={route(`/admin/members/${m.id}`)} className="block font-medium underline-offset-4 hover:underline">{m.full_name}</Link>
                 <span className="block text-micro text-muted">@{m.username}</span>
               </span>
             ),
