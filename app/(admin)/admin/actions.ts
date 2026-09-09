@@ -335,6 +335,48 @@ export async function updateMemberControls(_prev: AdminState, formData: FormData
   return { ok: `Member controls updated by ${actor.profile.full_name}.` };
 }
 
+const memberSponsorSchema = z.object({
+  member_id: z.string().uuid(),
+  sponsor_id: z.string().uuid().nullable(),
+  reason: z.string().trim().min(10, "Add a reason for the referral change.").max(500),
+  acknowledged: z.literal("on", { error: "Confirm the audited referral change." }),
+});
+
+export async function updateMemberSponsor(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  let actor;
+  try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
+  const rawSponsor = String(formData.get("sponsor_id") ?? "").trim();
+  const parsed = memberSponsorSchema.safeParse({
+    member_id: formData.get("member_id"),
+    sponsor_id: rawSponsor ? rawSponsor : null,
+    reason: formData.get("reason"),
+    acknowledged: formData.get("acknowledged"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the referral change." };
+  if (parsed.data.sponsor_id === parsed.data.member_id) return { error: "A member cannot sponsor themselves." };
+  if (!hasServiceRole()) return { error: "Referral controls are unavailable without the server service role." };
+
+  const admin = createAdminClient();
+  const { data: before } = await admin.from("profiles").select("id, full_name, referred_by, sponsor_locked_at").eq("id", parsed.data.member_id).maybeSingle();
+  if (!before) return { error: "Member not found." };
+  if (before.referred_by === parsed.data.sponsor_id) return { error: "This referral relationship is already set." };
+  if (parsed.data.sponsor_id) {
+    const { data: sponsor } = await admin.from("profiles").select("id, full_name, status").eq("id", parsed.data.sponsor_id).maybeSingle();
+    if (!sponsor) return { error: "The selected sponsor does not exist." };
+    if (["closed", "suspended"].includes(sponsor.status)) return { error: "A closed or suspended member cannot be a sponsor." };
+  }
+
+  const { error } = await admin.rpc("admin_update_member_sponsor", { p_member: parsed.data.member_id, p_sponsor: parsed.data.sponsor_id });
+  if (error) return { error: `Could not update the referral chain: ${error.message}` };
+  const after = { referred_by: parsed.data.sponsor_id, reason: parsed.data.reason, changed_by: actor.id };
+  await admin.from("audit_log").insert({ actor_id: actor.id, action: "member.sponsor_changed", subject_table: "profiles", subject_id: parsed.data.member_id, before, after });
+  await admin.from("notifications").insert({ user_id: parsed.data.member_id, kind: "account_notice", title: "Your referral relationship was updated", body: "An administrator updated your sponsor relationship. Contact support if you need clarification.", href: "/dashboard/referrals" });
+  revalidatePath(`/admin/members/${parsed.data.member_id}`);
+  revalidatePath("/admin/members");
+  revalidatePath("/admin/referrals");
+  return { ok: parsed.data.sponsor_id ? "Sponsor updated and referral chain rebuilt." : "Sponsor removed and referral chain rebuilt." };
+}
+
 export async function recomputeMemberRank(_prev: AdminState, formData: FormData): Promise<AdminState> {
   let actor;
   try { actor = await requireRole(["admin", "owner"]); } catch (e) { return { error: (e as Error).message }; }
@@ -365,9 +407,19 @@ export async function addMemberWalletAdjustment(_prev: AdminState, formData: For
   if (!hasServiceRole()) return { error: "Financial controls are unavailable without the server service role." };
   const admin = createAdminClient();
   const amount = Math.round(parsed.data.amount_pkr * 100) * (parsed.data.direction === "credit" ? 1 : -1);
-  const { data: balance, error: balanceError } = await admin.rpc("wallet_balance", { p_user: parsed.data.member_id });
+  // wallet_balance intentionally requires a signed-in user for member-facing reads.
+  // Admin actions use the service-role ledger directly so finance controls do not
+  // depend on the browser session being forwarded into an RPC.
+  const { data: latestWalletEntry, error: balanceError } = await admin
+    .from("wallet_entries")
+    .select("balance_after_minor")
+    .eq("user_id", parsed.data.member_id)
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (balanceError) return { error: `Could not read the member balance: ${balanceError.message}` };
-  if (amount < 0 && Math.abs(amount) > (balance ?? 0)) return { error: "A debit cannot take the member below a zero wallet balance." };
+  const balance = latestWalletEntry?.balance_after_minor ?? 0;
+  if (amount < 0 && Math.abs(amount) > balance) return { error: "A debit cannot take the member below a zero wallet balance." };
   const refId = crypto.randomUUID();
   const { error } = await admin.rpc("post_wallet_entry", { p_user: parsed.data.member_id, p_type: "adjustment", p_amount: amount, p_created_by: actor.id, p_ref_table: "admin_adjustments", p_ref_id: refId, p_memo: `Admin adjustment: ${parsed.data.memo}` });
   if (error) return { error: `The ledger rejected this adjustment: ${error.message}` };

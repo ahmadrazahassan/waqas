@@ -1997,6 +1997,10 @@ export type Database = {
       }
     }
     Functions: {
+      admin_update_member_sponsor: {
+        Args: { p_member: string; p_sponsor: string | null }
+        Returns: undefined
+      }
       advance_seasons: { Args: never; Returns: number }
       award_commissions: { Args: { p_payment_id: string }; Returns: number }
       award_leaderboard_points: {
@@ -2386,4 +2390,3 @@ export const Constants = {
     },
   },
 } as const
-

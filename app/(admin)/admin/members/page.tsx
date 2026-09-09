@@ -142,12 +142,25 @@ export default async function MembersPage({
                 <span className="text-muted">Paused</span>
               ),
           },
-          { key: "kyc", header: "KYC", render: (m) => m.kyc_status },
+          { key: "kyc", header: "KYC", render: (m) => <Status status={m.kyc_status} /> },
           { key: "joined", header: "Joined", render: (m) => formatDate(m.created_at) },
           {
             key: "status",
             header: "Status",
             render: (m) => <Status status={m.status} />,
+          },
+          {
+            key: "actions",
+            header: "Actions",
+            align: "end",
+            render: (m) => (
+              <Link
+                href={route(`/admin/members/${m.id}`)}
+                className="inline-flex h-9 items-center rounded-control border border-line px-3 text-micro font-medium hover:border-ink hover:text-ink"
+              >
+                Edit member
+              </Link>
+            ),
           },
         ]}
       />

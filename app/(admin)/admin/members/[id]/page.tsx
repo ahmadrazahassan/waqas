@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageTitle, Card, DataTable, Empty, Status } from "@/components/app/ui";
 import { MemberControls } from "@/components/admin/member-controls";
 import { MemberFinanceControls } from "@/components/admin/member-finance-controls";
+import { MemberReferralControls } from "@/components/admin/member-referral-controls";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Member management" };
@@ -12,7 +13,7 @@ export const metadata: Metadata = { title: "Member management" };
 export default async function MemberDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const [{ data: member }, { data: membership }, { data: claims }, { data: referrals }, { data: commissions }, { data: fraud }, { data: audit }, { data: wallet }] = await Promise.all([
+  const [{ data: member }, { data: membership }, { data: claims }, { data: referrals }, { data: commissions }, { data: fraud }, { data: audit }, { data: wallet }, { data: sponsors }] = await Promise.all([
     supabase.from("profiles").select("*, ranks(*)").eq("id", id).maybeSingle(),
     supabase.from("memberships").select("*, plans(name, price_minor)").eq("user_id", id).order("created_at", { ascending: false }).limit(5),
     supabase.from("task_claims").select("id, status, claimed_at, due_at, tasks(title, payout_minor, currency)").eq("user_id", id).order("claimed_at", { ascending: false }).limit(25),
@@ -21,6 +22,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
     supabase.from("fraud_signals").select("id, signal, severity, state, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
     supabase.from("audit_log").select("id, action, subject_table, created_at, after").eq("subject_id", id).order("created_at", { ascending: false }).limit(30),
     supabase.from("wallet_entries").select("balance_after_minor").eq("user_id", id).order("id", { ascending: false }).limit(1),
+    supabase.from("profiles").select("id, full_name, username, status").neq("id", id).order("full_name").limit(500),
   ]);
   if (!member) notFound();
   const rank = member.ranks as unknown as { name: string; multiplier_bps: number; direct_referrals: number } | null;
@@ -28,6 +30,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
   const taskRows = (claims ?? []) as unknown as { id: string; status: string; claimed_at: string; due_at: string; tasks: { title: string; payout_minor: number; currency: string } | null }[];
   const referralRows = (referrals ?? []) as unknown as { id: string; full_name: string; username: string; status: string; created_at: string; ranks: { name: string } | null }[];
   const commissionRows = (commissions ?? []) as unknown as { id: string; amount_minor: number; currency: string; depth: number; status: string; created_at: string }[];
+  const sponsorRows = (sponsors ?? []) as unknown as { id: string; full_name: string; username: string; status: string }[];
   const balance = wallet?.[0]?.balance_after_minor ?? 0;
 
   return (
@@ -45,7 +48,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
 
       <div className="mt-8 grid gap-6 xl:grid-cols-12">
         <div className="xl:col-span-7"><Card><h2 className="text-h4">Member controls</h2><p className="mt-2 mb-5 text-small text-muted">Every change is written to the audit log. Historical payments and wallet entries are never deleted from this screen.</p><MemberControls member={{ id: member.id, status: member.status, kyc_status: member.kyc_status, commission_eligible: member.commission_eligible, full_name: member.full_name, display_name: member.display_name, headline: member.headline, bio: member.bio, phone_e164: member.phone_e164, country_code: member.country_code, timezone: member.timezone, leaderboard_optin: member.leaderboard_optin }} /></Card></div>
-        <div className="space-y-6 xl:col-span-5"><Card><p className="text-micro uppercase tracking-widest text-muted">Identity and referral</p><dl className="mt-4 divide-y divide-line border-y border-line"><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Referral code</dt><dd className="tabular">{member.referral_code}</dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Sponsor</dt><dd className="tabular">{member.referred_by ? "Attached" : "Direct"}</dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">KYC</dt><dd><Status status={member.kyc_status} /></dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Commission</dt><dd>{member.commission_eligible ? "Eligible" : "Paused"}</dd></div></dl></Card><Card><h2 className="text-h4">Recent risk signals</h2>{(fraud ?? []).length ? <ul className="mt-4 divide-y divide-line">{fraud?.slice(0, 5).map((signal) => <li key={signal.id} className="py-3"><div className="flex justify-between gap-3 text-small"><span>{signal.signal}</span><Status status={signal.state} /></div><p className="mt-1 text-micro text-muted">{signal.severity} · {formatDate(signal.created_at)}</p></li>)}</ul> : <p className="mt-3 text-small text-muted">No recorded fraud signals.</p>}</Card></div>
+        <div className="space-y-6 xl:col-span-5"><Card><p className="text-micro uppercase tracking-widest text-muted">Identity and referral</p><dl className="mt-4 divide-y divide-line border-y border-line"><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Referral code</dt><dd className="tabular">{member.referral_code}</dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Sponsor</dt><dd className="tabular">{member.referred_by ? "Attached" : "Direct"}</dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">KYC</dt><dd><Status status={member.kyc_status} /></dd></div><div className="flex justify-between gap-4 py-3 text-small"><dt className="text-muted">Commission</dt><dd>{member.commission_eligible ? "Eligible" : "Paused"}</dd></div></dl><MemberReferralControls memberId={member.id} currentSponsorId={member.referred_by} sponsors={sponsorRows} lockedAt={member.sponsor_locked_at} /></Card><Card><h2 className="text-h4">Recent risk signals</h2>{(fraud ?? []).length ? <ul className="mt-4 divide-y divide-line">{fraud?.slice(0, 5).map((signal) => <li key={signal.id} className="py-3"><div className="flex justify-between gap-3 text-small"><span>{signal.signal}</span><Status status={signal.state} /></div><p className="mt-1 text-micro text-muted">{signal.severity} · {formatDate(signal.created_at)}</p></li>)}</ul> : <p className="mt-3 text-small text-muted">No recorded fraud signals.</p>}</Card></div>
       </div>
 
       <div className="mt-8"><Card><h2 className="text-h4">Financial controls</h2><p className="mt-2 mb-5 max-w-[70ch] text-small text-muted">Finance, admin and owner roles can correct a member’s earning position here. The original commission and ledger records remain intact; corrections are new, visible entries with a reason.</p><MemberFinanceControls memberId={member.id} balance={balance} commissions={commissionRows.map((row) => ({ id: row.id, amount_minor: row.amount_minor, status: row.status, created_at: row.created_at }))} /></Card></div>
