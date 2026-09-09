@@ -118,10 +118,17 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             rows={payments ?? []}
             keyOf={(p) => p.id}
             empty={
-              <Empty
-                title="No payments yet"
-                body="Your confirmed transfer appears here, along with what it opened."
-              />
+              plan ? (
+                <Empty
+                  title="Activated without a payment record"
+                  body={`Your ${plan.name} access is live, but no transfer is recorded against it, which means a member of staff opened the account by hand. Nothing is owed and nothing is wrong with your access. If you did pay and expected to see it here, contact support and we will attach the record.`}
+                />
+              ) : (
+                <Empty
+                  title="No payments yet"
+                  body="Your confirmed transfer appears here, along with what it opened."
+                />
+              )
             }
             columns={[
               { key: "date", header: "Paid", render: (p) => formatDate(p.paid_at) },
@@ -155,7 +162,17 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             rows={declarations ?? []}
             keyOf={(d) => d.id}
             empty={
-              <Empty title="Nothing declared" body="Transfers you tell us about show up here." />
+              plan ? (
+                <Empty
+                  title="Nothing declared"
+                  body="Your access was opened without going through the declaration form, so there is nothing to show here."
+                />
+              ) : (
+                <Empty
+                  title="Nothing declared"
+                  body="Transfers you tell us about show up here."
+                />
+              )
             }
             columns={[
               { key: "date", header: "Declared", render: (d) => formatDate(d.created_at) },

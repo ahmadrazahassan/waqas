@@ -84,9 +84,38 @@ export async function claimTask(
     .insert({ task_id: taskId, user_id: user.id, due_at: dueAt });
 
   if (error) {
-    return error.code === "23505"
-      ? { error: "You have already claimed this one." }
-      : { error: "Could not claim it. It may have just filled up." };
+    // The old catch-all said "it may have just filled up" for every failure,
+    // including permission errors. That sent people to re-read a task that was
+    // never the problem, and it hid the real cause from us as well.
+    console.error("[claimTask] insert failed", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      taskId,
+      userId: user.id,
+    });
+
+    switch (error.code) {
+      case "23505":
+        return { error: "You have already claimed this one." };
+      case "23503":
+        return { error: "That task no longer exists. Refresh the list." };
+      case "42501":
+        // RLS refused the insert. Almost always a membership that is active in
+        // the UI but not verified by the database gate.
+        return {
+          error:
+            "Your account is not cleared to claim tasks yet. If your payment shows as verified, contact support and quote this task, because the two records disagree.",
+        };
+      case "P0001":
+        // A trigger raised. Its message is written for a member, so show it.
+        return { error: error.message };
+      default:
+        return {
+          error: `Could not claim it (${error.code ?? "unknown"}). Nothing has been charged or reserved. Try again, and tell support if it keeps happening.`,
+        };
+    }
   }
 
   revalidatePath("/dashboard/tasks");

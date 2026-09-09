@@ -14,7 +14,13 @@ export default async function DashboardLayout({
 
   const supabase = await createClient();
 
-  const [{ count: unread }, { count: activeTasks }, { data: roles }, { data: wallet }] = await Promise.all([
+  const [
+    { count: unread },
+    { count: activeTasks },
+    { data: roles },
+    { data: wallet },
+    { data: notifications },
+  ] = await Promise.all([
     supabase
       .from("notifications")
       .select("*", { count: "exact", head: true })
@@ -32,6 +38,14 @@ export default async function DashboardLayout({
       .eq("user_id", user.id)
       .order("id", { ascending: false })
       .limit(1),
+    // Seeds the bell so the panel has content the moment it opens, and so the
+    // unread dot is correct before any client fetch runs.
+    supabase
+      .from("notifications")
+      .select("id, kind, title, body, href, read_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(12),
   ]);
 
   // Anyone from reviewer upwards can open /admin. Showing the link only to
@@ -61,6 +75,7 @@ export default async function DashboardLayout({
     <AppShell
       nav={nav}
       unread={unread ?? 0}
+      notifications={notifications ?? []}
       balance={wallet?.[0]?.balance_after_minor ?? 0}
       user={{
         name: user.profile.full_name,

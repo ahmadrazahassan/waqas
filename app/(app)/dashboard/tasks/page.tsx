@@ -143,8 +143,14 @@ export default async function TasksPage({
 
                   <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-line pt-4">
                     <div>
-                      <dt className="text-micro text-muted">Deadline</dt>
-                      <dd className="text-small tabular">{task.due_hours}h</dd>
+                      <dt className="text-micro text-muted">You get</dt>
+                      <dd className="text-small tabular">
+                        {task.due_hours >= 24
+                          ? `${Math.round(task.due_hours / 24)} ${
+                              Math.round(task.due_hours / 24) === 1 ? "day" : "days"
+                            }`
+                          : `${task.due_hours}h`}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-micro text-muted">Min rank</dt>

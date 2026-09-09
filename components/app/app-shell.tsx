@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { Wordmark } from "@/components/marketing/wordmark";
+import { NotificationBell, type BellNotification } from "@/components/app/notification-bell";
 import { cn, formatMoney } from "@/lib/utils";
 import { route } from "@/lib/routes";
 
@@ -56,12 +57,14 @@ export function AppShell({
   user,
   unread,
   balance,
+  notifications,
   children,
 }: {
   nav: NavItem[];
   user: { name: string; username: string; rank: string; avatarUrl: string | null };
   unread: number;
   balance: number;
+  notifications: BellNotification[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -157,22 +160,7 @@ export function AppShell({
                 <span className="block text-small font-medium tabular">{formatMoney(balance)}</span>
               </span>
             </Link>
-            <Link
-              href="/dashboard/notifications"
-              className="relative grid size-11 place-items-center rounded-sm text-muted transition-colors duration-200 hover:text-ink"
-            >
-              <Bell size={19} strokeWidth={1.25} />
-              {unread > 0 ? (
-                <>
-                  <span className="absolute end-2 top-2 grid min-w-4 place-items-center rounded-full bg-critical px-1 text-[10px] font-medium text-white tabular">
-                    {unread > 9 ? "9+" : unread}
-                  </span>
-                  <span className="sr-only">{unread} unread notifications</span>
-                </>
-              ) : (
-                <span className="sr-only">Notifications</span>
-              )}
-            </Link>
+            <NotificationBell initialUnread={unread} initialItems={notifications} />
 
             <div className="relative">
               <button
