@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { jazzCash, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
 
 /**
  * Next 16 renamed middleware.ts to proxy.ts, and the exported function to
@@ -13,6 +14,12 @@ import { NextResponse, type NextRequest } from "next/server";
  *      always be bypassed by calling the API directly.
  */
 export async function proxy(request: NextRequest) {
+  if (paymentsPaused && request.nextUrl.pathname === jazzCash.qrPath) {
+    return new NextResponse(paymentUnavailableMessage, {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -84,6 +91,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/images/payments/jazzcash-qr.png",
     /*
      * Everything except static assets and image optimisation. The session
      * still needs refreshing on public pages, so this is deliberately broad.

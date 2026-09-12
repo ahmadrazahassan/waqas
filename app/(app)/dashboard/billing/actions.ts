@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
-import { jazzCash, proofMime } from "@/lib/billing";
+import { jazzCash, proofMime, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
 
 export type BillingState = { error?: string; ok?: string };
 
@@ -16,6 +16,7 @@ function refreshBilling() {
 }
 
 export async function declarePayment(_prev: BillingState, formData: FormData): Promise<BillingState> {
+  if (paymentsPaused) return { error: paymentUnavailableMessage };
   const user = await getCurrentUser();
   if (!user) return { error: "Please sign in again before submitting your payment." };
   if (!["pending", "active"].includes(user.profile.status)) return { error: "Please contact support about your account before paying." };

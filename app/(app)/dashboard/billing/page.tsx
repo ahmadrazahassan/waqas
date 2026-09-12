@@ -5,7 +5,7 @@ import { PageTitle, Card, Status, Empty, DataTable } from "@/components/app/ui";
 import { DeclareForm } from "@/components/app/declare-form";
 import Image from "next/image";
 import Link from "next/link";
-import { jazzCash, hasPaidAccess } from "@/lib/billing";
+import { jazzCash, hasPaidAccess, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
 import { PaymentReview } from "@/components/app/payment-review";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 import { formatMoney, formatDate } from "@/lib/utils";
@@ -42,7 +42,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         .limit(20),
     ]);
 
-  const bucket = hasServiceRole() ? await createAdminClient().storage.getBucket(jazzCash.proofBucket) : null;
+  const bucket = !paymentsPaused && hasServiceRole() ? await createAdminClient().storage.getBucket(jazzCash.proofBucket) : null;
   const ready = !!bucket?.data && !bucket.data.public && !bucket.error && !!plans?.length;
   const active = hasPaidAccess(user.profile.status, membership, new Date().getTime());
   const canPay = ["pending", "active"].includes(user.profile.status) && !membership;
@@ -79,7 +79,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         </Card>
       ) : null}
 
-      {!waiting && canPay ? (
+      {paymentsPaused ? <Card className="mb-6 border-s-4 border-s-warning">
+        <div role="status">
+          <h2 className="text-h4">Payments are temporarily unavailable</h2>
+          <p className="mt-2 text-small text-muted">{paymentUnavailableMessage}</p>
+        </div>
+        <Link href="/contact" className="mt-4 inline-block text-small underline">Contact support</Link>
+      </Card> : !waiting && canPay ? (
         ready ? <div className="grid gap-6 xl:grid-cols-12">
           <Card className="xl:col-span-5">
             <p className="text-micro uppercase tracking-widest text-muted">01 / Pay with JazzCash</p>

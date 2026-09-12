@@ -1,4 +1,7 @@
 /** The only incoming payment method. Withdrawals are separate. */
+export const paymentsPaused = true;
+export const paymentUnavailableMessage = "Our payment method is temporarily unavailable due to a technical issue. Please try again later and do not send a payment for now. If you have already paid, contact support.";
+
 export const jazzCash = {
   id: "jazzcash",
   name: "JazzCash",

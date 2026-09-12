@@ -23,19 +23,7 @@ export type BellNotification = {
   created_at: string;
 };
 
-/* --------------------------------------------------------------------------
-   The alert tone.
-
-   Synthesised with the Web Audio API rather than shipped as an mp3: two short
-   notes, about 40ms of sound, no file to download and nothing to 404. It is
-   also easy to keep quiet, which matters more than the sound itself.
-
-   Browsers block audio until the person has interacted with the page, so the
-   first play may be refused. That is correct behaviour and is swallowed
-   silently: a notification that arrives without a sound is fine, an unhandled
-   rejection in the console is not.
-   -------------------------------------------------------------------------- */
-
+// Reuse an audio context unlocked by a real user interaction.
 const MUTE_KEY = "aw_notify_muted";
 
 function isMuted() {
@@ -71,22 +59,25 @@ function setMutedPref(next: boolean) {
   for (const l of muteListeners) l();
 }
 
+let audioContext: AudioContext | null = null;
+
+function unlockAudio() {
+  try {
+    const Ctx = window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    if (!audioContext || audioContext.state === "closed") audioContext = new Ctx();
+    if (audioContext.state === "suspended") void audioContext.resume().catch(() => {});
+  } catch {
+    // Audio may be unavailable on this device. Visual notifications still work.
+  }
+}
+
 async function chime() {
   if (isMuted()) return;
-
-  // Someone who asked the OS for less motion generally wants less of
-  // everything attention-grabbing.
-  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-
   try {
-    const Ctx =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!Ctx) return;
-
-    const ctx = new Ctx();
-    if (ctx.state === "suspended") await ctx.resume();
+    const ctx = audioContext;
+    if (!ctx || ctx.state !== "running") return;
 
     const now = ctx.currentTime;
     // Two notes a fifth apart. Short, quiet, and not a system alert sound.
@@ -104,9 +95,10 @@ async function chime() {
       osc.connect(gain).connect(ctx.destination);
       osc.start(now + at);
       osc.stop(now + at + 0.18);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
     }
 
-    window.setTimeout(() => void ctx.close(), 600);
+
   } catch {
     // Autoplay policy, no audio device, or a locked context. Not worth a word.
   }
@@ -128,6 +120,16 @@ export function NotificationBell({
   const muted = useSyncExternalStore(subscribeMute, isMuted, () => false);
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    document.addEventListener("pointerdown", unlock);
+    document.addEventListener("keydown", unlock);
+    return () => {
+      document.removeEventListener("pointerdown", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
   // Ids we have already announced, so a refetch does not re-chime for the
   // same notification.
@@ -234,7 +236,10 @@ export function NotificationBell({
     const next = !muted;
     setMutedPref(next);
     // Unmuting plays the tone once, so you hear what you just switched on.
-    if (!next) void chime();
+    if (!next) {
+      unlockAudio();
+      void audioContext?.resume().then(() => chime()).catch(() => {});
+    }
   }
 
   return (
@@ -244,7 +249,7 @@ export function NotificationBell({
         type="button"
         onClick={() => {
           setOpen((v) => !v);
-          if (!open) void load(false);
+          if (!open) void load(true);
         }}
         aria-expanded={open}
         aria-haspopup="dialog"
