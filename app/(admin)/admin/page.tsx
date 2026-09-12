@@ -144,7 +144,7 @@ export default async function AdminOverviewPage() {
                   return (
                     <li
                       key={m.id}
-                      className="flex items-center justify-between gap-4 border-b border-line py-3"
+                      className="flex flex-col items-start gap-3 border-b border-line py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-small font-medium">
@@ -158,7 +158,7 @@ export default async function AdminOverviewPage() {
                           <span>{rank?.name}</span>
                         </p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-3">
+                      <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:shrink-0 sm:justify-end">
                         <span className="text-micro text-muted">
                           {formatDate(m.created_at)}
                         </span>

@@ -20,7 +20,7 @@ export function PageTitle({
           <p className="mt-2 max-w-[64ch] text-small text-muted">{lead}</p>
         ) : null}
       </div>
-      {children ? <div className="shrink-0">{children}</div> : null}
+      {children ? <div className="w-full sm:w-auto sm:shrink-0">{children}</div> : null}
     </div>
   );
 }
@@ -35,7 +35,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-md border border-line bg-surface p-6",
+        "rounded-md border border-line bg-surface p-5 sm:p-6",
         className,
       )}
     >
@@ -296,10 +296,17 @@ export function DataTable<T>({
             {columns.map((c) => (
               <div
                 key={c.key}
-                className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0"
+                className="flex items-start justify-between gap-4 border-b border-line py-2 last:border-b-0"
               >
                 <dt className="text-micro text-muted">{c.header}</dt>
-                <dd className="text-small">{c.render(row)}</dd>
+                <dd
+                  className={cn(
+                    "min-w-0 max-w-[65%] break-words text-end text-small",
+                    c.align === "end" && "tabular",
+                  )}
+                >
+                  {c.render(row)}
+                </dd>
               </div>
             ))}
           </dl>

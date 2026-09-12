@@ -89,7 +89,7 @@ export default async function MembersPage({
               className="mt-2 h-11 w-full rounded-sm border border-line bg-surface px-3 text-small"
             />
           </div>
-          <div>
+          <div className="w-full sm:w-auto">
             <label
               htmlFor="status"
               className="block text-micro font-medium uppercase tracking-[0.08em] text-muted"
@@ -100,7 +100,7 @@ export default async function MembersPage({
               id="status"
               name="status"
               defaultValue={status}
-              className="mt-2 h-11 rounded-sm border border-line bg-surface px-3 text-small"
+              className="mt-2 h-11 w-full rounded-sm border border-line bg-surface px-3 text-small sm:w-auto"
             >
               <option value="">Any</option>
               <option value="active">Active</option>
@@ -111,7 +111,7 @@ export default async function MembersPage({
           </div>
           <button
             type="submit"
-            className="h-11 rounded-sm border border-ink bg-ink px-5 text-small font-medium text-white"
+            className="h-11 w-full rounded-sm border border-ink bg-ink px-5 text-small font-medium text-white sm:w-auto"
           >
             Filter
           </button>
