@@ -1,9 +1,11 @@
 -- ============================================================================
 -- Member mobile numbers
 --
--- Signup now asks for a mobile number. profiles.phone_e164 already exists;
--- this migration makes it dependable:
+-- Signup now asks for a mobile number, stored in profiles.phone_e164.
 --
+--   0. Creates the column. The generated types listed it, but the live
+--      database did not have it: the first version of this file failed with
+--      ERROR 42703: column p.phone_e164 does not exist.
 --   1. Copies the number from signup metadata onto the profile row as it is
 --      created, so it is saved even on the fallback signup path that cannot use
 --      the service role.
@@ -17,6 +19,12 @@
 -- ============================================================================
 
 begin;
+
+alter table public.profiles add column if not exists phone_e164 text;
+alter table public.profiles add column if not exists phone_verified_at timestamptz;
+
+comment on column public.profiles.phone_e164 is
+  'Mobile number in E.164, e.g. +923001234567. Staff only; never shown to a member''s network.';
 
 create or replace function public.profile_phone_from_signup()
 returns trigger
