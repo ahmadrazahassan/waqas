@@ -45,7 +45,7 @@ export default async function AdminPaymentsPage() {
     <>
       <PageTitle
         title="Payments"
-        lead="Match each receipt against the JazzCash transaction history before activating the account. Approval unlocks the plan and records the payment, commission and leaderboard points together. A screenshot alone is not proof of settled funds."
+        lead="Match each receipt against the payment account transaction history before activating the account. Approval unlocks the plan and records the payment, commission and leaderboard points together. A screenshot alone is not proof of settled funds."
       ><RefreshQueue /></PageTitle>
 
       {!hasServiceRole() ? (
@@ -74,7 +74,7 @@ export default async function AdminPaymentsPage() {
           {queueError ? null : waiting.length === 0 ? (
             <Empty
               title="Nothing waiting"
-              body="Members submit a JazzCash payment screenshot from Plans & payments. New requests appear here for review."
+              body="Members submit a Easypaisa Bank payment screenshot from Plans & payments. New requests appear here for review."
             />
           ) : (
             waiting.map((d) => {

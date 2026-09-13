@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 
 // Isolated PostgreSQL fixture. Never connects to the live Supabase project.
-test('JazzCash migration enforces payment review and atomic activation', async () => {
+for (const method of ['jazzcash', 'easypaisa']) test(`${method} migration enforces payment review and atomic activation`, async () => {
   const db = new PGlite();
   try {
     await db.exec(`
@@ -39,6 +39,11 @@ test('JazzCash migration enforces payment review and atomic activation', async (
     const migration = await readFile(new URL('../supabase/migrations/202609090001_jazzcash_payment_review.sql', import.meta.url), 'utf8');
     await db.exec(migration);
     await db.exec(migration); // Re-applying remains safe.
+    if (method === 'easypaisa') {
+      const qrMigration = await readFile(new URL('../supabase/migrations/202609130001_plan_payment_qrs.sql', import.meta.url), 'utf8');
+      await db.exec(qrMigration);
+      await db.exec(qrMigration);
+    }
     const reviewer = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const member = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const second = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -48,21 +53,21 @@ test('JazzCash migration enforces payment review and atomic activation', async (
     const proof2 = `${second}/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee.png`;
     await db.query("insert into storage.objects values ('payment-proofs',$1),('payment-proofs',$2)", [proof, proof2]);
     const insert = "insert into public.payment_declarations(user_id,plan_id,amount_minor,method,reference,proof_path,status,created_at) values ($1,1,$2,$3,$4,$5,'submitted','2000-01-01') returning *";
-    for (const [amount, method, ref, path] of [[1,'jazzcash','REF1',proof],[500000,'card','REF1',proof],[500000,'jazzcash','REF1',null],[500000,'jazzcash','REF1',proof2]]) {
-      await assert.rejects(db.query(insert, [member, amount, method, ref, path]));
+    for (const [amount, invalidMethod, ref, path] of [[1,method,'REF1',proof],[500000,'card','REF1',proof],[500000,method,'REF1',null],[500000,method,'REF1',proof2]]) {
+      await assert.rejects(db.query(insert, [member, amount, invalidMethod, ref, path]));
     }
-    const { rows: [d] } = await db.query(insert, [member,500000,'jazzcash','ref100',proof]);
+    const { rows: [d] } = await db.query(insert, [member,500000,method,'ref100',proof]);
     assert.equal(d.reference, 'REF100');
     assert.ok(new Date(d.created_at).getFullYear() > 2020, 'timestamp cannot be backdated');
     assert.equal((await db.query('select * from memberships')).rows.length, 0, 'submission does not activate');
-    await assert.rejects(db.query(insert, [member,500000,'jazzcash','REF101',proof]));
-    await assert.rejects(db.query(insert, [second,500000,'jazzcash','REF100',proof2]));
+    await assert.rejects(db.query(insert, [member,500000,method,'REF101',proof]));
+    await assert.rejects(db.query(insert, [second,500000,method,'REF100',proof2]));
     await assert.rejects(db.query("update payment_declarations set created_at = now() + interval '6 hours' where id=$1", [d.id]));
     await assert.rejects(db.query("select confirm_declaration($1,$2)", [d.id,member]));
     // Simulate an authenticated caller bypassing the UI.
     await db.exec(`set role authenticated;`);
     await db.query("select set_config('request.jwt.claim.sub',$1,false)", [member]);
-    await assert.rejects(db.query(insert, [member,500000,'jazzcash','REF102',proof]));
+    await assert.rejects(db.query(insert, [member,500000,method,'REF102',proof]));
     await assert.rejects(db.query("select confirm_declaration($1,$2)", [d.id,reviewer]));
     await assert.rejects(db.query("select record_payment($1,1::smallint,500000)", [member]));
     await assert.rejects(db.query("insert into task_claims(user_id) values($1)", [member]));
@@ -79,12 +84,12 @@ test('JazzCash migration enforces payment review and atomic activation', async (
     await db.exec('set role authenticated;');
     await db.query("insert into task_claims(user_id) values($1)", [member]);
     await db.exec('reset role;');
-    const { rows: [rejected] } = await db.query(insert, [second,500000,'jazzcash','REF200',proof2]);
+    const { rows: [rejected] } = await db.query(insert, [second,500000,method,'REF200',proof2]);
     await db.query("update payment_declarations set status='rejected', reviewed_by=$2, reject_reason='Amount does not match the statement' where id=$1", [rejected.id, reviewer]);
     await assert.rejects(db.query("select confirm_declaration($1,$2)", [rejected.id,reviewer]));
     assert.equal((await db.query("select status from profiles where id=$1", [second])).rows[0].status, 'pending');
     assert.equal((await db.query("select * from notifications where user_id=$1 and kind='payment_rejected'", [second])).rows.length, 1);
-    const { rows: [retry] } = await db.query(insert, [second,500000,'jazzcash','REF200',proof2]);
+    const { rows: [retry] } = await db.query(insert, [second,500000,method,'REF200',proof2]);
     // Force the existing payment procedure to fail. Every side effect rolls back.
     await db.exec("create function fail_membership() returns trigger language plpgsql as $$ begin raise exception 'simulated activation failure'; end $$; create trigger fail_membership before insert on memberships for each row execute function fail_membership();");
     await assert.rejects(db.query("select confirm_declaration($1,$2)", [retry.id,reviewer]));

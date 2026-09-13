@@ -56,7 +56,7 @@ const pricingFaqs = [
   },
   {
     q: "How do I pay from Pakistan?",
-    a: "JazzCash QR is our only payment method. Choose your plan, scan the QR in Plans & payments, then submit the transaction ID and a payment screenshot. A six hour review countdown starts once your submission is saved. Your account activates only after an admin verifies the payment. If review takes longer, please contact support rather than paying again.",
+    a: "Easypaisa Bank QR is our only payment method. Choose your plan, scan the QR in Plans & payments, then submit the transaction ID and a payment screenshot. A six hour review countdown starts once your submission is saved. Your account activates only after an admin verifies the payment. If review takes longer, please contact support rather than paying again.",
   },
   {
     q: "What about tax?",

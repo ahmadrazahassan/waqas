@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
-import { jazzCash, proofMime, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
+import { incomingPayment, paymentQr, proofMime, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
 
 export type BillingState = { error?: string; ok?: string };
 
@@ -24,7 +24,7 @@ export async function declarePayment(_prev: BillingState, formData: FormData): P
 
   const parsed = z.object({
     plan_id: z.coerce.number().int().positive(),
-    reference: z.string().trim().min(4, "Enter your JazzCash transaction ID.").max(80).regex(/^[a-zA-Z0-9-]+$/, "Use the transaction ID shown on your receipt, without spaces.").transform(v => v.toUpperCase()),
+    reference: z.string().trim().min(4, "Enter your Easypaisa Bank transaction ID.").max(80).regex(/^[a-zA-Z0-9-]+$/, "Use the transaction ID shown on your receipt, without spaces.").transform(v => v.toUpperCase()),
     note: z.string().trim().max(500),
     acknowledged: z.literal("on", { error: "Confirm that the receipt is for this payment." }),
   }).safeParse({
@@ -35,40 +35,40 @@ export async function declarePayment(_prev: BillingState, formData: FormData): P
 
   const proof = formData.get("proof");
   if (!(proof instanceof File) || proof.size === 0) return { error: "Attach your payment screenshot." };
-  if (proof.size > jazzCash.maxProofBytes) return { error: "Your screenshot must be 5 MB or smaller." };
+  if (proof.size > incomingPayment.maxProofBytes) return { error: "Your screenshot must be 5 MB or smaller." };
   const bytes = new Uint8Array(await proof.arrayBuffer());
   const mime = proofMime(bytes);
   if (!mime || proof.type !== mime) return { error: "Use a PNG, JPG or WebP screenshot. PDFs and other file types are not accepted." };
 
   const admin = createAdminClient();
   const [{ data: bucket, error: bucketError }, { data: plan, error: planError }, { data: existing, error: waitingError }, { data: membership, error: memberError }] = await Promise.all([
-    admin.storage.getBucket(jazzCash.proofBucket),
-    admin.from("plans").select("id, price_minor, is_active").eq("id", parsed.data.plan_id).maybeSingle(),
+    admin.storage.getBucket(incomingPayment.proofBucket),
+    admin.from("plans").select("id, price_minor, currency, is_active").eq("id", parsed.data.plan_id).maybeSingle(),
     admin.from("payment_declarations").select("id").eq("user_id", user.id).eq("status", "submitted").limit(1).maybeSingle(),
     admin.from("memberships").select("id").eq("user_id", user.id).eq("status", "active").limit(1).maybeSingle(),
   ]);
   if (bucketError || !bucket || bucket.public) return { error: "Secure payment review is not ready yet. Please contact support before paying." };
   if (planError || waitingError || memberError) return { error: "We could not check your account. Please try again." };
-  if (!plan?.is_active) return { error: "That plan is not available." };
+  if (!plan?.is_active || !paymentQr(plan.price_minor, plan.currency)) return { error: "That plan is not available." };
   if (existing) return { error: "Your payment is already awaiting review. Please do not submit or pay again." };
   // Upgrades need a separate, server-calculated quote. Never charge full price twice.
   if (membership) return { error: "Your account already has an active plan. Contact support if you want to upgrade." };
 
   const extension = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
   const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
-  const { error: uploadError } = await admin.storage.from(jazzCash.proofBucket)
+  const { error: uploadError } = await admin.storage.from(incomingPayment.proofBucket)
     .upload(path, bytes, { contentType: mime, upsert: false, cacheControl: "0" });
   if (uploadError) return { error: "Your screenshot could not be saved. Please try again. No payment request was created." };
 
   // No client-supplied user, amount, timestamp, method or storage path is trusted.
   const { error } = await admin.from("payment_declarations").insert({
     user_id: user.id, plan_id: plan.id, amount_minor: plan.price_minor,
-    currency: "PKR", method: jazzCash.id, reference: parsed.data.reference,
+    currency: "PKR", method: incomingPayment.id, reference: parsed.data.reference,
     note: parsed.data.note || null, proof_path: path, status: "submitted",
   });
   if (error) {
     // Only this action's unreferenced upload is removed, never a submitted receipt.
-    await admin.storage.from(jazzCash.proofBucket).remove([path]);
+    await admin.storage.from(incomingPayment.proofBucket).remove([path]);
     return { error: error.code === "23505" ? "This payment reference or account already has a request. Check your payment history before trying again." : "We could not submit your receipt. Please try again or contact support." };
   }
   refreshBilling();

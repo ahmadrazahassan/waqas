@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
-import { jazzCash, ownsPaymentProof } from "@/lib/billing";
+import { incomingPayment, usesPaymentProofBucket, ownsPaymentProof } from "@/lib/billing";
 
 export type AdminState = { error?: string; ok?: string };
 
@@ -641,7 +641,7 @@ export async function setTaskStatus(_prev: AdminState, formData: FormData): Prom
   return { ok: `Task marked ${status}.` };
 }
 
-/* ------------------------------------------------ verify a JazzCash payment */
+/* ------------------------------------------------ verify a Easypaisa Bank payment */
 
 export async function decideDeclaration(
   _prev: AdminState,
@@ -701,10 +701,10 @@ export async function decideDeclaration(
     return { ok: "Rejected, and the member has been told why." };
   }
 
-  if (formData.get("verified") !== "on") return { error: "Check the receipt against the JazzCash transaction history, then confirm the verification checkbox." };
-  if (declaration.method === jazzCash.id) {
+  if (formData.get("verified") !== "on") return { error: "Check the receipt against the payment account transaction history, then confirm the verification checkbox." };
+  if (usesPaymentProofBucket(declaration.method)) {
     if (!declaration.proof_path || !ownsPaymentProof(declaration.user_id, declaration.proof_path)) return { error: "A valid payment screenshot is required." };
-    const { error: proofError } = await admin.storage.from(jazzCash.proofBucket).info(declaration.proof_path);
+    const { error: proofError } = await admin.storage.from(incomingPayment.proofBucket).info(declaration.proof_path);
     if (proofError) return { error: "The screenshot is unavailable. Do not approve until it can be reviewed." };
   }
 

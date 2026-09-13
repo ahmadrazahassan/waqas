@@ -1,16 +1,29 @@
 /** The only incoming payment method. Withdrawals are separate. */
-export const paymentsPaused = true;
+export const paymentsPaused = false;
 export const paymentUnavailableMessage = "Our payment method is temporarily unavailable due to a technical issue. Please try again later and do not send a payment for now. If you have already paid, contact support.";
 
-export const jazzCash = {
-  id: "jazzcash",
-  name: "JazzCash",
-  recipient: "Muhammad Waqas",
-  accountLabel: "9104",
-  qrPath: "/images/payments/jazzcash-qr.png",
+export const incomingPayment = {
+  id: "easypaisa",
+  name: "Easypaisa Bank",
   proofBucket: "payment-proofs",
   maxProofBytes: 5 * 1024 * 1024,
 } as const;
+
+/** Match exact database minor units, never a plan's position or display name. */
+export function paymentQr(priceMinor: number, currency = "PKR") {
+  if (currency !== "PKR") return null;
+  switch (priceMinor) {
+    case 500000: return "/images/payments/easypaisa-5000.png";
+    case 800000: return "/images/payments/easypaisa-8000.png";
+    case 1000000: return "/images/payments/easypaisa-10000.png";
+    default: return null;
+  }
+}
+
+/** Existing JazzCash receipts stay accessible in the same private bucket. */
+export function usesPaymentProofBucket(method: string) {
+  return method === "jazzcash" || method === incomingPayment.id;
+}
 
 export const REVIEW_WINDOW_MS = 6 * 60 * 60 * 1000;
 

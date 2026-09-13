@@ -1,6 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reviewClock, reviewDeadline, REVIEW_WINDOW_MS, proofMime, ownsPaymentProof, hasPaidAccess } from "../lib/billing.ts";
+import { reviewClock, reviewDeadline, REVIEW_WINDOW_MS, proofMime, ownsPaymentProof, hasPaidAccess, paymentQr, usesPaymentProofBucket } from "../lib/billing.ts";
+
+test("payment QRs match exact PKR plan amounts", () => {
+  assert.equal(paymentQr(500000), "/images/payments/easypaisa-5000.png");
+  assert.equal(paymentQr(800000), "/images/payments/easypaisa-8000.png");
+  assert.equal(paymentQr(1000000), "/images/payments/easypaisa-10000.png");
+  for (const amount of [0, 5000, 8000, 10000, 500001, NaN]) assert.equal(paymentQr(amount), null);
+  assert.equal(paymentQr(500000, "USD"), null);
+  assert.equal(usesPaymentProofBucket("jazzcash"), true);
+  assert.equal(usesPaymentProofBucket("easypaisa"), true);
+  assert.equal(usesPaymentProofBucket("card"), false);
+});
 
 const start = "2026-09-09T10:00:00.000Z";
 const now = Date.parse(start);

@@ -3,9 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { PageTitle, Card, Status, Empty, DataTable } from "@/components/app/ui";
 import { DeclareForm } from "@/components/app/declare-form";
-import Image from "next/image";
 import Link from "next/link";
-import { jazzCash, hasPaidAccess, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
+import { incomingPayment, hasPaidAccess, paymentsPaused, paymentUnavailableMessage } from "@/lib/billing";
 import { PaymentReview } from "@/components/app/payment-review";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 import { formatMoney, formatDate } from "@/lib/utils";
@@ -42,7 +41,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         .limit(20),
     ]);
 
-  const bucket = !paymentsPaused && hasServiceRole() ? await createAdminClient().storage.getBucket(jazzCash.proofBucket) : null;
+  const bucket = !paymentsPaused && hasServiceRole() ? await createAdminClient().storage.getBucket(incomingPayment.proofBucket) : null;
   const ready = !!bucket?.data && !bucket.data.public && !bucket.error && !!plans?.length;
   const active = hasPaidAccess(user.profile.status, membership, new Date().getTime());
   const canPay = ["pending", "active"].includes(user.profile.status) && !membership;
@@ -86,26 +85,12 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         </div>
         <Link href="/contact" className="mt-4 inline-block text-small underline">Contact support</Link>
       </Card> : !waiting && canPay ? (
-        ready ? <div className="grid gap-6 xl:grid-cols-12">
-          <Card className="xl:col-span-5">
-            <p className="text-micro uppercase tracking-widest text-muted">01 / Pay with JazzCash</p>
-            <h2 className="mt-3 text-h3">One QR. One payment.</h2>
-            <p className="mt-3 text-small text-muted">Choose your plan, scan this code in your payment app and confirm the recipient before sending.</p>
-            <a href={jazzCash.qrPath} target="_blank" rel="noopener noreferrer" className="mt-5 block rounded-sm border border-line bg-white p-3" aria-label="Open the original JazzCash QR at full size">
-              <Image src={jazzCash.qrPath} alt="JazzCash payment QR for Muhammad Waqas, account label 9104" width={727} height={1200} unoptimized className="mx-auto h-auto w-full max-w-[300px]" />
-            </a>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div><p className="text-small font-medium">{jazzCash.recipient}</p><p className="text-micro text-muted">Account label {jazzCash.accountLabel}</p></div>
-              <a href={jazzCash.qrPath} download="Assignwork-JazzCash-QR.png" className="inline-flex min-h-11 items-center rounded-sm border border-line px-4 text-small">Save QR</a>
-            </div>
-            <p className="mt-4 text-micro text-muted">On the same phone? Save the QR and use your payment app’s image scanner if supported. JazzCash QR is our only payment method.</p>
-          </Card>
-          <Card className="xl:col-span-7">
-            <p className="text-micro uppercase tracking-widest text-muted">02 / Submit your receipt</p>
-            <h2 className="mt-3 text-h3">Let us verify your payment.</h2>
-            <DeclareForm plans={plans ?? []} selectedPlan={selectedPlan} />
-          </Card>
-        </div> : <Card className="mb-6 border-s-4 border-s-warning">
+        ready ? <Card className="max-w-4xl">
+          <p className="text-micro uppercase tracking-widest text-muted">Easypaisa Bank payment</p>
+          <h2 className="mt-3 text-h3">Choose your plan. Scan its QR.</h2>
+          <p className="mt-3 text-small text-muted">Each plan has its own payment code. Confirm the amount and recipient in your banking app before sending.</p>
+          <DeclareForm plans={plans ?? []} selectedPlan={selectedPlan} />
+        </Card> : <Card className="mb-6 border-s-4 border-s-warning">
           <h2 className="text-h4">Payments are temporarily unavailable</h2>
           <p className="mt-2 text-small text-muted">Secure receipt review is being configured. Please do not send a payment yet. Contact support if you have already paid.</p>
           <Link href="/contact" className="mt-4 inline-block text-small underline">Contact support</Link>
