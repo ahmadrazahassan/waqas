@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/billing.test.ts tests/task-brief.test.ts tests/payment-migration.test.mjs tests/member-plan.test.mjs"
+    "test": "node --experimental-strip-types --test tests/billing.test.ts tests/phone.test.ts tests/task-brief.test.ts tests/payment-migration.test.mjs tests/member-plan.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.6",

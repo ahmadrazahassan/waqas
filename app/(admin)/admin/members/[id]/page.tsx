@@ -8,6 +8,7 @@ import { MemberControls } from "@/components/admin/member-controls";
 import { MemberFinanceControls } from "@/components/admin/member-finance-controls";
 import { MemberReferralControls } from "@/components/admin/member-referral-controls";
 import { formatDate, formatMoney } from "@/lib/utils";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata: Metadata = { title: "Member management" };
 
@@ -47,7 +48,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
       </PageTitle>
 
       <div className="grid gap-px sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Account</p><div className="mt-3"><Status status={member.status} /></div><p className="mt-3 text-small text-muted">{member.country_code} · {member.timezone}</p></div>
+        <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Account</p><div className="mt-3"><Status status={member.status} /></div><p className="mt-3 text-small text-muted">{member.country_code} · {member.timezone}</p><p className="mt-1 text-small tabular">{member.phone_e164 ? <a href={`tel:${member.phone_e164}`} className="hover:underline">{formatPhone(member.phone_e164)}</a> : <span className="text-warning">No mobile number</span>}</p></div>
         <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Rank</p><p className="mt-3 text-h3">{rank?.name ?? "Associate"}</p><p className="mt-2 text-small text-muted">{rank?.direct_referrals ?? 0} direct referrals</p></div>
         <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Plan</p><p className="mt-3 text-h3">{currentMembership?.plans?.name ?? "None"}</p><p className="mt-2 text-small text-muted">{currentMembership?.status ?? "No active membership"}</p></div>
         <div className="rounded-md border border-line bg-surface p-5"><p className="text-micro uppercase tracking-widest text-muted">Risk signals</p><p className="mt-3 text-h3">{(fraud ?? []).filter((s) => s.state === "open").length}</p><p className="mt-2 text-small text-muted">{(fraud ?? []).length} recorded in total</p></div>

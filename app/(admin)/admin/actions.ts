@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 import { incomingPayment, usesPaymentProofBucket, ownsPaymentProof } from "@/lib/billing";
+import { normalisePhone } from "@/lib/phone";
 
 export type AdminState = { error?: string; ok?: string };
 
@@ -284,7 +285,7 @@ const memberProfileSchema = z.object({
   display_name: z.string().trim().max(80),
   headline: z.string().trim().max(120),
   bio: z.string().trim().max(1000),
-  phone_e164: z.string().trim().max(30).regex(/^$|^\+[1-9][0-9]{7,14}$/, "Use an international phone number or leave it blank."),
+  phone_e164: z.string().trim().max(30),
   country_code: z.string().trim().length(2).transform((value) => value.toUpperCase()),
   timezone: z.string().trim().min(3).max(80),
   leaderboard_optin: z.boolean(),
@@ -298,12 +299,22 @@ export async function updateMemberProfile(_prev: AdminState, formData: FormData)
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the member profile." };
   if (!hasServiceRole()) return { error: "Profile controls are unavailable without the server service role." };
+  let phoneE164: string | null = null;
+  if (parsed.data.phone_e164) {
+    const phone = normalisePhone(parsed.data.phone_e164, parsed.data.country_code);
+    if (!phone.ok) return { error: phone.error };
+    phoneE164 = phone.e164;
+  }
   const admin = createAdminClient();
+  if (phoneE164) {
+    const { data: taken } = await admin.from("profiles").select("username").eq("phone_e164", phoneE164).neq("id", parsed.data.member_id).limit(1).maybeSingle();
+    if (taken) return { error: `That mobile number already belongs to @${taken.username}.` };
+  }
   const { data: before } = await admin.from("profiles").select("full_name, display_name, headline, bio, phone_e164, country_code, timezone, leaderboard_optin").eq("id", parsed.data.member_id).maybeSingle();
   if (!before) return { error: "Member not found." };
-  const after = { full_name: parsed.data.full_name, display_name: parsed.data.display_name || null, headline: parsed.data.headline || null, bio: parsed.data.bio || null, phone_e164: parsed.data.phone_e164 || null, country_code: parsed.data.country_code, timezone: parsed.data.timezone, leaderboard_optin: parsed.data.leaderboard_optin };
+  const after = { full_name: parsed.data.full_name, display_name: parsed.data.display_name || null, headline: parsed.data.headline || null, bio: parsed.data.bio || null, phone_e164: phoneE164, country_code: parsed.data.country_code, timezone: parsed.data.timezone, leaderboard_optin: parsed.data.leaderboard_optin };
   const { error } = await admin.from("profiles").update(after).eq("id", parsed.data.member_id);
-  if (error) return { error: `Could not update profile: ${error.message}` };
+  if (error) return { error: error.code === "23505" ? "That mobile number already belongs to another member." : `Could not update profile: ${error.message}` };
   await admin.from("audit_log").insert({ actor_id: actor.id, action: "member.profile_updated", subject_table: "profiles", subject_id: parsed.data.member_id, before, after });
   revalidatePath(`/admin/members/${parsed.data.member_id}`);
   revalidatePath("/admin/members");

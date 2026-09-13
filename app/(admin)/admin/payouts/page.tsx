@@ -4,6 +4,7 @@ import { hasServiceRole } from "@/lib/supabase/admin";
 import { PageTitle, StatTile, Card, Status, Empty } from "@/components/app/ui";
 import { PayoutDecision } from "@/components/admin/payout-decision";
 import { formatMoney, formatDate } from "@/lib/utils";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata: Metadata = { title: "Payouts" };
 
@@ -12,7 +13,7 @@ export default async function PayoutsPage() {
 
   const { data: payouts } = await supabase
     .from("payout_requests")
-    .select("*, profiles(full_name, username, kyc_status)")
+    .select("*, profiles(full_name, username, kyc_status, phone_e164)")
     .order("requested_at", { ascending: false })
     .limit(100);
 
@@ -61,6 +62,7 @@ export default async function PayoutsPage() {
               full_name: string;
               username: string;
               kyc_status: string;
+              phone_e164: string | null;
             } | null;
             const pending = ["requested", "approved", "processing"].includes(p.status);
 
@@ -71,6 +73,14 @@ export default async function PayoutsPage() {
                     <p className="text-h4 tabular">{formatMoney(p.amount_minor)}</p>
                     <p className="mt-1 text-small text-muted">
                       {member?.full_name} (@{member?.username})
+                      {" · "}
+                      {member?.phone_e164 ? (
+                        <a href={`tel:${member.phone_e164}`} className="tabular hover:text-ink">
+                          {formatPhone(member.phone_e164)}
+                        </a>
+                      ) : (
+                        <span className="text-warning">No mobile</span>
+                      )}
                     </p>
                     <p className="mt-1 text-micro text-muted">
                       {p.method.replace("_", " ")} ·{" "}

@@ -5,6 +5,7 @@ import { PageTitle, Card, Status } from "@/components/app/ui";
 import { ProfileForm } from "@/components/app/profile-form";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { CountryChip } from "@/components/ui/flag";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -38,6 +39,8 @@ export default async function SettingsPage() {
               displayName={user.profile.display_name}
               headline={user.profile.headline}
               leaderboardOptin={user.profile.leaderboard_optin}
+              phone={user.profile.phone_e164}
+              countryCode={user.profile.country_code}
             />
           </Card>
         </div>
@@ -48,6 +51,10 @@ export default async function SettingsPage() {
             <dl className="mt-4 border-t border-line">
               <Row label="Email" value={user.email ?? "Not set"} />
               <Row label="Username" value={`@${user.profile.username}`} />
+              <Row
+                label="Mobile"
+                value={user.profile.phone_e164 ? formatPhone(user.profile.phone_e164) : "Not added yet"}
+              />
               <Row label="Referral code" value={user.profile.referral_code} />
               <div className="flex items-baseline justify-between gap-4 border-b border-line py-3">
                 <dt className="text-small text-muted">Country</dt>

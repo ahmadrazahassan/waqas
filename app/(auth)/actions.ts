@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 import { REFERRAL_COOKIE, normaliseCode } from "@/lib/referral/code";
 import { route } from "@/lib/routes";
+import { normalisePhone } from "@/lib/phone";
 
 export type AuthState = { error?: string; fieldErrors?: Record<string, string> };
 
@@ -26,6 +27,7 @@ const signupSchema = z.object({
   email,
   password: z.string().min(10, "Use at least 10 characters. Length beats symbols."),
   country_code: z.string().length(2).default("PK"),
+  phone: z.string().trim().min(1, "Enter your mobile number.").max(30),
 });
 
 const loginSchema = z.object({
@@ -76,9 +78,33 @@ export async function signUp(
     email: formData.get("email"),
     password: formData.get("password"),
     country_code: formData.get("country_code") || "PK",
+    phone: formData.get("phone") ?? "",
   });
 
   if (!parsed.success) return { fieldErrors: flatten(parsed.error) };
+
+  // Normalised to E.164 before anything is created, so a bad number never
+  // leaves behind an account without one.
+  const phone = normalisePhone(parsed.data.phone, parsed.data.country_code);
+  if (!phone.ok) return { fieldErrors: { phone: phone.error } };
+
+  // One account per number. Checked up front for a readable message; the
+  // unique index in 202609130002 is what actually guarantees it.
+  if (hasServiceRole()) {
+    const { data: taken } = await createAdminClient()
+      .from("profiles")
+      .select("id")
+      .eq("phone_e164", phone.e164)
+      .limit(1)
+      .maybeSingle();
+    if (taken) {
+      return {
+        fieldErrors: {
+          phone: "That number is already registered. Log in instead, or use a different number.",
+        },
+      };
+    }
+  }
 
   const supabase = await createClient();
   let userId: string | null = null;
@@ -106,6 +132,7 @@ export async function signUp(
       user_metadata: {
         full_name: parsed.data.full_name,
         country_code: parsed.data.country_code,
+        phone_e164: phone.e164,
       },
     });
 
@@ -121,6 +148,7 @@ export async function signUp(
         data: {
           full_name: parsed.data.full_name,
           country_code: parsed.data.country_code,
+          phone_e164: phone.e164,
         },
       },
     });
@@ -130,6 +158,20 @@ export async function signUp(
   }
 
   if (!userId) return { error: "Could not create the account. Try again." };
+
+  // The profile row is created by the auth trigger, which only knows the
+  // columns it was written for. Save the number onto it explicitly.
+  if (hasServiceRole()) {
+    const { error: phoneError } = await createAdminClient()
+      .from("profiles")
+      .update({ phone_e164: phone.e164 })
+      .eq("id", userId);
+    if (phoneError) {
+      // The account exists either way. Settings asks for the number again if
+      // it did not stick, so this is logged rather than failing the signup.
+      console.error("[signUp] could not save phone", { code: phoneError.code, userId });
+    }
+  }
 
   // Attach the sponsor. First touch wins: the httpOnly cookie set by /r/[code]
   // is the source of truth, never anything in the form.

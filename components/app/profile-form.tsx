@@ -4,17 +4,22 @@ import { useActionState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { updateProfile, type ActionState } from "@/app/(app)/dashboard/actions";
 import { Button } from "@/components/ui/button";
+import { DIAL_CODES, formatPhone } from "@/lib/phone";
 
 export function ProfileForm({
   fullName,
   displayName,
   headline,
   leaderboardOptin,
+  phone,
+  countryCode,
 }: {
   fullName: string;
   displayName: string | null;
   headline: string | null;
   leaderboardOptin: boolean;
+  phone: string | null;
+  countryCode: string;
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     updateProfile,
@@ -36,6 +41,35 @@ export function ProfileForm({
           defaultValue={fullName}
           className="mt-2 h-12 w-full rounded-sm border border-line bg-surface px-3.5 text-small"
         />
+      </div>
+
+      <div>
+        <label
+          htmlFor="phone"
+          className="block text-micro font-medium uppercase tracking-[0.08em] text-muted"
+        >
+          Mobile number
+        </label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          defaultValue={formatPhone(phone)}
+          placeholder={countryCode === "PK" ? "0300 1234567" : "+44 7700 900123"}
+          aria-invalid={!phone || undefined}
+          className={
+            "mt-2 h-12 w-full rounded-sm border bg-surface px-3.5 text-small tabular " +
+            (phone ? "border-line" : "border-warning")
+          }
+        />
+        <p className="mt-2 text-micro text-muted">
+          {phone
+            ? "Used for payment checks and account support. Only staff can see it."
+            : `Add a mobile number${DIAL_CODES[countryCode] ? ` (+${DIAL_CODES[countryCode]})` : ""}. We need it to verify payments and payouts.`}
+        </p>
       </div>
 
       <div>

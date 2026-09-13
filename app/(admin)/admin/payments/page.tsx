@@ -10,6 +10,7 @@ import { PageTitle, StatTile, Card, Status, Empty, DataTable } from "@/component
 import { DeclarationDecision } from "@/components/admin/declaration-decision";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { CountryChip } from "@/components/ui/flag";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata: Metadata = { title: "Payments" };
 
@@ -22,7 +23,7 @@ export default async function AdminPaymentsPage() {
   const [{ data: declarations, count: pendingCount, error: queueError }, { data: payments }, { data: reviewed }] = await Promise.all([
     supabase
       .from("payment_declarations")
-      .select("*, profiles!payment_declarations_user_id_fkey(full_name, username, country_code), plans(name)", { count: "exact" })
+      .select("*, profiles!payment_declarations_user_id_fkey(full_name, username, country_code, phone_e164), plans(name)", { count: "exact" })
       .eq("status", "submitted")
       .order("created_at", { ascending: true })
       .limit(100),
@@ -82,6 +83,7 @@ export default async function AdminPaymentsPage() {
                 full_name: string;
                 username: string;
                 country_code: string;
+                phone_e164: string | null;
               } | null;
               const plan = d.plans as unknown as { name: string } | null;
 
@@ -96,6 +98,14 @@ export default async function AdminPaymentsPage() {
                         </span>
                         <span aria-hidden="true">·</span>
                         <CountryChip code={member?.country_code} size="sm" />
+                        <span aria-hidden="true">·</span>
+                        {member?.phone_e164 ? (
+                          <a href={`tel:${member.phone_e164}`} className="tabular hover:text-ink">
+                            {formatPhone(member.phone_e164)}
+                          </a>
+                        ) : (
+                          <span className="text-warning">No mobile</span>
+                        )}
                         <span aria-hidden="true">·</span>
                         <span>{plan?.name}</span>
                       </p>

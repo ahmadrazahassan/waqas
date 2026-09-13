@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { COUNTRIES } from "@/lib/countries";
 import { Flag } from "@/components/ui/flag";
 import { cn } from "@/lib/utils";
+import { DIAL_CODES } from "@/lib/phone";
 
 type Mode = "login" | "signup";
 
@@ -26,7 +27,7 @@ export function AuthForm({
     {},
   );
 
-  const ids = { name: useId(), email: useId(), password: useId() };
+  const ids = { name: useId(), email: useId(), password: useId(), phone: useId() };
   const errors = state.fieldErrors ?? {};
   const [country, setCountry] = useState("PK");
 
@@ -95,6 +96,54 @@ export function AuthForm({
                 This sets your leaderboard track and cannot be changed without
                 verification.
               </p>
+            </div>
+
+            <div>
+              <label
+                htmlFor={ids.phone}
+                className="block text-micro font-medium uppercase tracking-[0.08em] text-muted"
+              >
+                Mobile number
+              </label>
+              <div className="mt-2 flex">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "grid h-12 min-w-16 shrink-0 place-items-center rounded-s-sm border border-e-0 bg-bg px-3 text-small text-muted tabular",
+                    errors.phone ? "border-critical" : "border-line",
+                  )}
+                >
+                  {DIAL_CODES[country] ? `+${DIAL_CODES[country]}` : "+"}
+                </span>
+                <input
+                  id={ids.phone}
+                  name="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete={DIAL_CODES[country] ? "tel-national" : "tel"}
+                  required
+                  placeholder={
+                    country === "PK"
+                      ? "300 1234567"
+                      : DIAL_CODES[country]
+                        ? "Your mobile number"
+                        : "Include the country code, e.g. +44 7700 900123"
+                  }
+                  aria-invalid={Boolean(errors.phone)}
+                  aria-describedby={`${ids.phone}-${errors.phone ? "error" : "hint"}`}
+                  className={cn(fieldClass(errors.phone), "mt-0 rounded-s-none tabular")}
+                />
+              </div>
+              {errors.phone ? (
+                <p id={`${ids.phone}-error`} className="mt-2 text-small text-critical">
+                  {errors.phone}
+                </p>
+              ) : (
+                <p id={`${ids.phone}-hint`} className="mt-2 text-micro text-muted">
+                  Used for payment checks and account support. Never shown to
+                  your network.
+                </p>
+              )}
             </div>
           </>
         ) : null}

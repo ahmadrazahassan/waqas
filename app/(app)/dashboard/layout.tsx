@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import Link from "next/link";
 import { AppShell, type NavItem } from "@/components/app/app-shell";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,25 @@ export default async function DashboardLayout({
         avatarUrl: user.profile.avatar_url,
       }}
     >
+      {user.profile.phone_e164 ? null : (
+        <div
+          role="status"
+          className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line border-s-2 border-s-warning bg-surface p-4"
+        >
+          <p className="text-small">
+            <span className="font-medium">Add your mobile number.</span>{" "}
+            <span className="text-muted">
+              Finance uses it to match payments and send payouts.
+            </span>
+          </p>
+          <Link
+            href="/dashboard/settings#phone"
+            className="text-small font-medium text-violet underline-offset-2 hover:underline"
+          >
+            Add it in Settings
+          </Link>
+        </div>
+      )}
       {children}
     </AppShell>
   );

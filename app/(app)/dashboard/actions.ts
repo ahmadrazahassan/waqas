@@ -7,6 +7,8 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { memberHasAccess } from "@/lib/payment-access";
 import { redirect } from "next/navigation";
 import { parseTaskBrief, validateTaskWork } from "@/lib/task-brief";
+import { normalisePhone } from "@/lib/phone";
+import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 
 export type ActionState = { error?: string; ok?: string };
 
@@ -295,6 +297,7 @@ const profileSchema = z.object({
   display_name: z.string().trim().max(40).optional(),
   headline: z.string().trim().max(120).optional(),
   leaderboard_optin: z.boolean(),
+  phone: z.string().trim().min(1, "Enter your mobile number.").max(30),
 });
 
 export async function updateProfile(
@@ -306,6 +309,7 @@ export async function updateProfile(
     display_name: formData.get("display_name") || undefined,
     headline: formData.get("headline") || undefined,
     leaderboard_optin: formData.get("leaderboard_optin") === "on",
+    phone: formData.get("phone") ?? "",
   });
 
   if (!parsed.success) {
@@ -314,6 +318,44 @@ export async function updateProfile(
 
   const user = await getCurrentUser();
   if (!user) return { error: "You need to be logged in." };
+
+  const phone = normalisePhone(parsed.data.phone, user.profile.country_code);
+  if (!phone.ok) return { error: phone.error };
+
+  if (phone.e164 !== user.profile.phone_e164) {
+    if (!hasServiceRole()) return { error: "Phone changes are unavailable right now. Contact support." };
+    const admin = createAdminClient();
+    const { data: taken } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("phone_e164", phone.e164)
+      .neq("id", user.id)
+      .limit(1)
+      .maybeSingle();
+    if (taken) return { error: "That number is already registered to another account." };
+
+    // Written with the service role, scoped to the signed-in member's own id,
+    // so it does not depend on which profile columns RLS lets members edit.
+    const { error: phoneError } = await admin
+      .from("profiles")
+      .update({ phone_e164: phone.e164, phone_verified_at: null })
+      .eq("id", user.id);
+    if (phoneError) {
+      return {
+        error: phoneError.code === "23505"
+          ? "That number is already registered to another account."
+          : "Could not save your mobile number.",
+      };
+    }
+    await admin.from("audit_log").insert({
+      actor_id: user.id,
+      action: "member.phone_changed",
+      subject_table: "profiles",
+      subject_id: user.id,
+      before: { phone_e164: user.profile.phone_e164 },
+      after: { phone_e164: phone.e164 },
+    });
+  }
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -329,7 +371,7 @@ export async function updateProfile(
   if (error) return { error: "Could not save your profile." };
 
   updateTag(`profile:${user.id}`);
-  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard", "layout");
   return { ok: "Saved." };
 }
 
