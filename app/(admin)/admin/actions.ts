@@ -6,8 +6,41 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient, hasServiceRole } from "@/lib/supabase/admin";
 import { incomingPayment, usesPaymentProofBucket, ownsPaymentProof } from "@/lib/billing";
 import { normalisePhone } from "@/lib/phone";
+import { clearMatureCommissions } from "@/lib/commission-clearing";
 
 export type AdminState = { error?: string; ok?: string };
+
+export async function processDueCommissions(): Promise<AdminState> {
+  let actor;
+  try {
+    actor = await requireRole(["finance", "admin", "owner"]);
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+  if (!hasServiceRole()) {
+    return { error: "Commission clearing is unavailable without the server service role." };
+  }
+
+  try {
+    const result = await clearMatureCommissions();
+    await createAdminClient().from("audit_log").insert({
+      actor_id: actor.id,
+      action: "commission.due_processed",
+      subject_table: "commissions",
+      after: { cleared: result.cleared, notification_warning: result.notificationWarning ?? null },
+    });
+    revalidatePath("/admin", "layout");
+    revalidatePath("/admin/commissions");
+    revalidatePath("/dashboard", "layout");
+    return {
+      ok: result.cleared
+        ? `${result.cleared} due commission ${result.cleared === 1 ? "entry was" : "entries were"} added to member wallets.${result.notificationWarning ? ` ${result.notificationWarning}` : ""}`
+        : "No commission has reached its release time yet.",
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Commission clearing failed." };
+  }
+}
 
 /** Every admin action re-checks the role. proxy.ts is UX, this is the gate. */
 async function requireRole(roles: string[]) {
@@ -469,7 +502,7 @@ export async function addMemberWalletAdjustment(_prev: AdminState, formData: For
 const commissionStatusSchema = z.object({
   commission_id: z.string().uuid(),
   member_id: z.string().uuid(),
-  status: z.enum(["pending", "review", "available", "paid", "reversed", "void"]),
+  status: z.enum(["pending", "review", "void"]),
   reason: z.string().trim().min(10, "Add a reason for the commission change.").max(500),
 });
 
@@ -482,7 +515,7 @@ export async function setCommissionStatus(_prev: AdminState, formData: FormData)
   const admin = createAdminClient();
   const { data: before } = await admin.from("commissions").select("id, amount_minor, status, reversed_reason, earner_id").eq("id", parsed.data.commission_id).eq("earner_id", parsed.data.member_id).maybeSingle();
   if (!before) return { error: "Commission entry not found for this member." };
-  if (before.status === "paid" && parsed.data.status !== "paid") return { error: "A paid commission cannot be silently changed. Record a wallet correction with its own audit reason." };
+  if (!["pending", "review"].includes(before.status)) return { error: "This commission has already reached the wallet or a final state. Use the matching refund, payout or audited wallet process instead." };
   const { error } = await admin.from("commissions").update({ status: parsed.data.status as never, reversed_reason: ["reversed", "void"].includes(parsed.data.status) ? parsed.data.reason : null }).eq("id", parsed.data.commission_id).eq("earner_id", parsed.data.member_id);
   if (error) return { error: `Could not change commission status: ${error.message}` };
   await admin.from("audit_log").insert({ actor_id: actor.id, action: "commission.status_changed", subject_table: "commissions", subject_id: parsed.data.commission_id, before, after: { status: parsed.data.status, reason: parsed.data.reason } });

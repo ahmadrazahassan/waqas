@@ -88,6 +88,7 @@ export default async function AdminOverviewPage() {
           label="Commission liability"
           value={formatMoney(outstanding)}
           sub="Pending plus cleared but unpaid"
+          href="/admin/commissions"
         />
         <StatTile
           label="Payout queue"

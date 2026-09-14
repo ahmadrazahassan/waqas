@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Banknote,
   ClipboardCheck,
+  CircleDollarSign,
   CreditCard,
   Gauge,
   ListPlus,
@@ -18,14 +19,21 @@ import {
   Users,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
 import { route } from "@/lib/routes";
 
-const NAV = [
+const NAV: Array<{
+  href: string;
+  label: string;
+  Icon: LucideIcon;
+  roles?: string[];
+}> = [
   { href: "/admin", label: "Overview", Icon: Gauge },
   { href: "/admin/members", label: "Members", Icon: Users },
   { href: "/admin/referrals", label: "Referral explorer", Icon: Network },
+  { href: "/admin/commissions", label: "Commissions", Icon: CircleDollarSign, roles: ["finance", "admin", "owner"] },
   { href: "/admin/tasks", label: "Tasks", Icon: ListPlus },
   { href: "/admin/reviews", label: "Task reviews", Icon: ClipboardCheck },
   { href: "/admin/payments", label: "Payment reviews", Icon: CreditCard },
@@ -52,6 +60,9 @@ export function AdminShell({
   const mobileMenuPanelRef = useRef<HTMLDivElement>(null);
   const isActive = (href: string) =>
     href === "/admin" ? pathname === href : pathname.startsWith(href);
+  const visibleNav = NAV.filter(
+    (item) => !item.roles || item.roles.some((role) => user.roles.includes(role)),
+  );
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -107,7 +118,7 @@ export function AdminShell({
 
         <nav aria-label="Admin" className="flex-1 overflow-y-auto p-3">
           <ul className="flex gap-1 overflow-x-auto lg:block lg:space-y-1 lg:overflow-visible">
-            {NAV.map(({ href, label, Icon }) => {
+            {visibleNav.map(({ href, label, Icon }) => {
               const active = isActive(href);
               return (
                 <li key={href} className="shrink-0">
@@ -203,7 +214,7 @@ export function AdminShell({
             </div>
             <nav aria-label="Admin mobile" className="min-h-0 flex-1 overflow-y-auto p-3">
               <ul className="space-y-1">
-                {NAV.map(({ href, label, Icon }) => {
+                {visibleNav.map(({ href, label, Icon }) => {
                   const active = isActive(href);
                   return (
                     <li key={href}>
