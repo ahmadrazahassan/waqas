@@ -15,6 +15,8 @@ npm run dev
 Other scripts: `npm run build`, `npm run start`, `npm run lint`, `npm run typecheck`.
 Payment tests: `npm test` (Node 22.6+; verified with Node 24).
 
+Cloudflare Workers deployment: [setup and redeployment](docs/CLOUDFLARE.md).
+
 ## JazzCash payment setup
 
 Incoming payments now use only the supplied JazzCash QR, a required screenshot,

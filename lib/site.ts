@@ -2,7 +2,7 @@ export const site = {
   name: "Assignwork",
   legalName: "Assignwork Ltd",
   tagline: "Paid tasks and three level referral commission",
-  url: "https://assignwork.co.uk",
+  url: (process.env.NEXT_PUBLIC_SITE_URL || "https://assignwork.uk").replace(/\/$/, ""),
   description:
     "Assignwork is a UK platform for paid online tasks. Complete work that matches your rank, and earn commission on every member you introduce, three levels deep.",
   founded: 2026,

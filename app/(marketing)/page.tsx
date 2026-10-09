@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { site } from "@/lib/site";
 import {
   faqs,
   hero,
@@ -48,6 +49,13 @@ const illustrations = {
 export default function HomePage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+        "@context": "https://schema.org",
+        "@graph": [
+          { "@type": "Organization", "@id": `${site.url}/#organization`, name: site.name, url: site.url, logo: `${site.url}/brand/assignwork-mark.png` },
+          { "@type": "WebSite", "@id": `${site.url}/#website`, name: site.name, url: site.url, description: site.description, publisher: { "@id": `${site.url}/#organization` } },
+        ],
+      }).replace(/</g, "\\u003c") }} />
       {/* ---- 1. Hero ------------------------------------------------------ */}
       <Media
         src={hero.image}
@@ -190,6 +198,7 @@ export default function HomePage() {
       <AnnouncementBand />
 
       {/* ---- 5. Split panel ----------------------------------------------- */}
+      <DevPlaceholder active={!statsAreReal} label="real numbers required">
       <section className="grid lg:grid-cols-2">
         <div className="relative min-h-[420px] overflow-hidden bg-lime">
           <ArcField className="absolute inset-0 h-full w-full text-ink/25" />
@@ -204,7 +213,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        <DevPlaceholder active={!statsAreReal} label="real numbers required">
           <div className="grid h-full min-h-[420px] grid-cols-1 bg-ink sm:grid-cols-2">
             {splitStats.map((stat) => (
               <div
@@ -220,8 +228,8 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-        </DevPlaceholder>
       </section>
+      </DevPlaceholder>
 
       {/* ---- 6. Leaderboard ----------------------------------------------- */}
       <Section>

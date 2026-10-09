@@ -1,10 +1,17 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { taskCatalogue } from "@/lib/task-catalogue";
 import { TaskInstructions } from "@/components/app/task-instructions";
 import { Section } from "@/components/ui/primitives";
 
 export function generateStaticParams() { return taskCatalogue.map(t=>({slug:t.slug})); }
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const task = taskCatalogue.find(t => t.slug === slug);
+  if (!task) notFound();
+  return { title: task.title, description: task.summary, alternates: { canonical: `/tasks/${task.slug}` }, robots: { index: false, follow: true } };
+}
 export default async function TaskPreview({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const task = taskCatalogue.find(t=>t.slug===slug);

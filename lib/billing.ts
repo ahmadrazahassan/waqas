@@ -13,9 +13,9 @@ export const incomingPayment = {
 export function paymentQr(priceMinor: number, currency = "PKR") {
   if (currency !== "PKR") return null;
   switch (priceMinor) {
-    case 500000: return "/images/payments/easypaisa-5000.png";
-    case 800000: return "/images/payments/easypaisa-8000.png";
-    case 1000000: return "/images/payments/easypaisa-10000.png";
+    case 500000: return "/images/payments/easypaisa-5000-20261009.png";
+    case 800000: return "/images/payments/easypaisa-8000-20261009.png";
+    case 1000000: return "/images/payments/easypaisa-10000-20261009.png";
     default: return null;
   }
 }

@@ -31,7 +31,9 @@ export const metadata: Metadata = {
     siteName: site.name,
     title: `${site.name} · ${site.tagline}`,
     description: site.description,
+    images: [{ url: "/brand/assignwork-mark.png", width: 1280, height: 1280, alt: site.name }],
   },
+  twitter: { card: "summary", title: site.name, description: site.description, images: ["/brand/assignwork-mark.png"] },
   robots: { index: true, follow: true },
 };
 

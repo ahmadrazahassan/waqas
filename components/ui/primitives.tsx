@@ -165,8 +165,8 @@ export function Badge({
 
    Section 13: every number in shipped copy is real or the section does not
    ship. This draws a dashed outline around placeholder data in development
-   only, so nobody forgets what still needs replacing. It renders nothing in
-   production, which is exactly why `statsAreReal` must be flipped before then.
+   only, so nobody forgets what still needs replacing. Active placeholders
+   and their invented figures are omitted entirely in production.
    -------------------------------------------------------------------------- */
 
 export function DevPlaceholder({
@@ -178,7 +178,8 @@ export function DevPlaceholder({
   label?: string;
   active: boolean;
 }) {
-  if (!active || process.env.NODE_ENV === "production") return <>{children}</>;
+  if (!active) return <>{children}</>;
+  if (process.env.NODE_ENV === "production") return null;
 
   return (
     <div className="relative outline-1 outline-offset-4 outline-dashed outline-critical/40">
